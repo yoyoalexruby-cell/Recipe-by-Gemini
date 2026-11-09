@@ -1,0 +1,6 @@
+{
+  "name": "食味手记 - 私房烹饪手帐",
+  "description": "温暖手帐风美食菜谱记录器，涵盖详细食谱、动态食材清单、步骤拍照配图、心得复盘与精美手帐卡片分享。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,31 @@
+{
+  "id": "/",
+  "name": "食味手记 - 私房烹饪手帐",
+  "short_name": "食味手记",
+  "description": "精致温暖的私房做菜手帐本，支持详细食谱记录、动态食材清单、步骤拍照与心得海报分享",
+  "theme_color": "#FAF7F2",
+  "background_color": "#FAF7F2",
+  "display": "standalone",
+  "start_url": "/",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

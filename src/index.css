@@ -1,0 +1,204 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root, [data-theme="light"] {
+    --paper-bg: #FAF7F2;
+    --paper-card: #FFFFFF;
+    --paper-card-subtle: #FAF7F2;
+    --paper-border: #EADBCE;
+    --paper-border-strong: #D5C4B4;
+    --ink-primary: #2C2723;
+    --ink-secondary: #5A5248;
+    --ink-muted: #7A7268;
+    --dot-color: #D6CBC0;
+    --terracotta: #C85A32;
+    --terracotta-hover: #B34C26;
+    --matcha: #5F7A4D;
+  }
+
+  .dark, [data-theme="dark"] {
+    --paper-bg: #151210;
+    --paper-card: #1F1A17;
+    --paper-card-subtle: #27211D;
+    --paper-border: #3A312B;
+    --paper-border-strong: #4F433B;
+    --ink-primary: #F3ECE6;
+    --ink-secondary: #D4C7BC;
+    --ink-muted: #9C8E82;
+    --dot-color: #2E2520;
+    --terracotta: #E0683D;
+    --terracotta-hover: #C85A32;
+    --matcha: #7EA368;
+  }
+
+  [data-theme="kraft"] {
+    --paper-bg: #EAE1D0;
+    --paper-card: #F6EFE3;
+    --paper-card-subtle: #EDE4D3;
+    --paper-border: #D1C0A8;
+    --paper-border-strong: #BFA98F;
+    --ink-primary: #261910;
+    --ink-secondary: #4A3A2C;
+    --ink-muted: #6C5A48;
+    --dot-color: #C2B095;
+    --terracotta: #BD532B;
+    --terracotta-hover: #A6441F;
+    --matcha: #546E44;
+  }
+
+  [data-theme="matcha"] {
+    --paper-bg: #EFF3EC;
+    --paper-card: #FFFFFF;
+    --paper-card-subtle: #F5F8F2;
+    --paper-border: #D1DCC8;
+    --paper-border-strong: #BAC8B0;
+    --ink-primary: #192716;
+    --ink-secondary: #3D4E39;
+    --ink-muted: #5E7259;
+    --dot-color: #C3D0BA;
+    --terracotta: #BF5730;
+    --terracotta-hover: #A6441F;
+    --matcha: #52753F;
+  }
+
+  body {
+    background-color: var(--paper-bg);
+    color: var(--ink-primary);
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    transition: background-color 0.25s ease, color 0.25s ease;
+  }
+
+  h1, h2, h3, .font-journal-title {
+    font-family: 'Noto Serif SC', 'ZCOOL XiaoWei', Georgia, serif;
+  }
+}
+
+/* Notebook Subtle Texture & Patterns */
+.bg-notebook-dots {
+  background-image: radial-gradient(var(--dot-color, #D6CBC0) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.bg-notebook-grid {
+  background-image: linear-gradient(to right, rgba(214, 203, 192, 0.4) 1px, transparent 1px),
+                    linear-gradient(to bottom, rgba(214, 203, 192, 0.4) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.bg-notebook-lines {
+  background-image: linear-gradient(rgba(214, 203, 192, 0.5) 1px, transparent 1px);
+  background-size: 100% 28px;
+}
+
+/* Washi Tape Ribbon Effects */
+.washi-tape {
+  position: relative;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+.washi-tape::before,
+.washi-tape::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  background-size: 6px 6px;
+  opacity: 0.6;
+}
+.washi-tape::before {
+  left: -3px;
+  background-image: radial-gradient(circle at 0 3px, transparent 2px, rgba(255,255,255,0.4) 2px);
+}
+.washi-tape::after {
+  right: -3px;
+  background-image: radial-gradient(circle at 6px 3px, transparent 2px, rgba(255,255,255,0.4) 2px);
+}
+
+/* Paper Deckle/Torn edge effect */
+.paper-shadow {
+  box-shadow: 0 4px 20px -2px rgba(60, 40, 20, 0.07), 0 2px 6px -1px rgba(60, 40, 20, 0.04);
+}
+
+.dark .paper-shadow,
+[data-theme="dark"] .paper-shadow {
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.4), 0 2px 6px -1px rgba(0, 0, 0, 0.3);
+}
+
+.polaroid-shadow {
+  box-shadow: 0 10px 25px -5px rgba(50, 30, 15, 0.12), 0 4px 10px -2px rgba(50, 30, 15, 0.06);
+}
+
+.dark .polaroid-shadow,
+[data-theme="dark"] .polaroid-shadow {
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.6), 0 4px 10px -2px rgba(0, 0, 0, 0.4);
+}
+
+/* Print Layout Optimization for Recipe Journal Scrapbook & PDF Export */
+@page {
+  size: A4 portrait;
+  margin: 10mm 12mm;
+}
+
+@media print {
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body {
+    background: #FFF !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    color: #1A1A1A !important;
+  }
+
+  /* Hide app header, navigation, floating buttons, toasts, and overlays */
+  header, nav, aside, footer, .no-print, [role="dialog"] > div:first-child:not(#recipe-print-document) {
+    display: none !important;
+  }
+
+  /* Visibility isolation: Only render #recipe-print-document when active */
+  body:has(#recipe-print-document) * {
+    visibility: hidden;
+  }
+
+  body:has(#recipe-print-document) #recipe-print-document,
+  body:has(#recipe-print-document) #recipe-print-document * {
+    visibility: visible;
+  }
+
+  #recipe-print-document {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 10mm 12mm !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: #FFF !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Minimal ink mode for black & white printers */
+  body.print-minimal-ink #recipe-print-document {
+    background: #FFFFFF !important;
+    color: #000000 !important;
+  }
+
+  body.print-minimal-ink #recipe-print-document * {
+    color: #000000 !important;
+  }
+
+  /* Page break avoidance on recipe elements */
+  .print-avoid-break,
+  .print-page section,
+  .polaroid-shadow,
+  img {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+}
+

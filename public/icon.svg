@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="bgGrad" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#E26D46" />
+      <stop offset="100%" stop-color="#A8381A" />
+    </radialGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#3A1208" flood-opacity="0.3" />
+    </filter>
+  </defs>
+
+  <!-- Background Squircle / Rounded Badge -->
+  <rect width="512" height="512" rx="128" fill="url(#bgGrad)" />
+
+  <!-- Inner Textured Ring -->
+  <circle cx="256" cy="256" r="218" fill="none" stroke="#FDEEE6" stroke-width="4" stroke-dasharray="10 8" opacity="0.4" />
+
+  <!-- Steam swirls -->
+  <g opacity="0.7" filter="url(#shadow)">
+    <path d="M216 140 C206 110, 230 90, 220 60" fill="none" stroke="#FFFFFF" stroke-width="8" stroke-linecap="round" />
+    <path d="M256 130 C268 100, 244 80, 256 50" fill="none" stroke="#FFFFFF" stroke-width="10" stroke-linecap="round" />
+    <path d="M296 140 C286 110, 310 90, 300 60" fill="none" stroke="#FFFFFF" stroke-width="8" stroke-linecap="round" />
+  </g>
+
+  <!-- Culinary Clay Pot Body -->
+  <g filter="url(#shadow)">
+    <!-- Base Pot -->
+    <path d="M128 250 C128 370, 384 370, 384 250 Z" fill="#FBF6EE" stroke="#E5DAC8" stroke-width="6" />
+    <!-- Pot Rim -->
+    <ellipse cx="256" cy="250" rx="136" ry="32" fill="#FFFFFF" stroke="#E5DAC8" stroke-width="6" />
+    <!-- Broth Surface -->
+    <ellipse cx="256" cy="254" rx="120" ry="24" fill="#C08A3E" opacity="0.9" />
+
+    <!-- Pot Handles -->
+    <path d="M112 245 C92 245, 92 275, 112 275" fill="none" stroke="#E5DAC8" stroke-width="8" stroke-linecap="round" />
+    <path d="M400 245 C420 245, 420 275, 400 275" fill="none" stroke="#E5DAC8" stroke-width="8" stroke-linecap="round" />
+  </g>
+
+  <!-- Chinese Character / Seal: 食 -->
+  <g filter="url(#shadow)">
+    <circle cx="256" cy="254" r="54" fill="#A8381A" />
+    <circle cx="256" cy="254" r="48" fill="none" stroke="#FFF" stroke-width="2" stroke-dasharray="4 3" opacity="0.8" />
+    <text x="256" y="274" font-family="'Noto Serif SC', serif" font-weight="900" font-size="52" fill="#FFFDF9" text-anchor="middle">
+      食
+    </text>
+  </g>
+
+  <!-- Chopsticks & Star Decors -->
+  <line x1="340" y1="170" x2="430" y2="120" stroke="#FFFDF9" stroke-width="6" stroke-linecap="round" />
+  <line x1="330" y1="180" x2="420" y2="130" stroke="#FFFDF9" stroke-width="6" stroke-linecap="round" />
+
+  <!-- Bottom Brand Ribbon Text -->
+  <text x="256" y="440" font-family="'Noto Serif SC', serif" font-weight="700" font-size="28" fill="#FFFDF9" text-anchor="middle" letter-spacing="6">
+    食味手记
+  </text>
+</svg>

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>食味手记 - 私房烹饪手帐</title>
+    <meta name="description" content="温暖手帐风美食菜谱记录器，涵盖详细食谱、动态食材清单、步骤拍照配图、心得复盘与精美手帐卡片分享。" />
+    <meta property="og:title" content="食味手记 - 私房烹饪手帐" />
+    <meta property="og:description" content="温暖手帐风美食菜谱记录器，涵盖详细食谱、动态食材清单、步骤拍照配图、心得复盘与精美手帐卡片分享。" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="theme-color" content="#FAF7F2" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="食味手记" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700;900&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=ZCOOL+XiaoWei&display=swap" rel="stylesheet">
+    <script>
+      // Gracefully handle HMR/WebSocket disconnects in cloud iframe environment
+      window.addEventListener('unhandledrejection', function(event) {
+        var msg = event?.reason?.message || '';
+        if (msg.includes("reading 'send'") || msg.includes('WebSocket') || msg.includes('vite:ws')) {
+          event.preventDefault();
+        }
+      });
+      window.addEventListener('error', function(event) {
+        var msg = event?.message || '';
+        if (msg.includes("reading 'send'") || msg.includes('WebSocket')) {
+          event.preventDefault();
+        }
+      });
+    </script>
+  </head>
+  <body class="bg-[#FAF7F2] text-[#2C2723] antialiased selection:bg-[#E8DCC4] selection:text-[#50371E]">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
