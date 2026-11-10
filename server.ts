@@ -76,6 +76,35 @@ async function startServer() {
       },
       appType: 'spa',
     });
+
+    // Intercept /@vite/client to completely prevent WebSocket connection attempts and errors in cloud sandbox
+    app.get('/@vite/client', async (_req, res, next) => {
+      try {
+        const result = await vite.transformRequest('/@vite/client');
+        if (result && result.code) {
+          const patched = result.code
+            .replace(
+              'reject(/* @__PURE__ */ new Error("WebSocket closed without opened."));',
+              'resolve(); /* suppressed in cloud sandbox */'
+            )
+            .replace(
+              'reject(new Error("WebSocket closed without opened."));',
+              'resolve(); /* suppressed in cloud sandbox */'
+            )
+            .replace(
+              /console\.error\(`\[vite\] failed to connect to websocket/g,
+              'console.debug(`[vite] hmr disabled in cloud sandbox'
+            );
+          res.setHeader('Content-Type', 'application/javascript');
+          res.setHeader('Cache-Control', 'no-cache');
+          return res.send(patched);
+        }
+        next();
+      } catch (err) {
+        next(err);
+      }
+    });
+
     app.use(vite.middlewares);
   }
 

@@ -21,19 +21,139 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700;900&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=ZCOOL+XiaoWei&display=swap" rel="stylesheet">
     <script>
-      // Gracefully handle HMR/WebSocket disconnects in cloud iframe environment
-      window.addEventListener('unhandledrejection', function(event) {
-        var msg = event?.reason?.message || '';
-        if (msg.includes("reading 'send'") || msg.includes('WebSocket') || msg.includes('vite:ws')) {
-          event.preventDefault();
+      // 1. Pre-configure ethereum on window to avoid "Cannot redefine property: ethereum" from conflicting wallet extensions
+      try {
+        var _eth = undefined;
+        Object.defineProperty(window, 'ethereum', {
+          get: function() { return _eth; },
+          set: function(val) { _eth = val; },
+          configurable: true,
+          enumerable: true
+        });
+      } catch (e) {}
+
+      // 2. Safe WebSocket shim for Vite HMR in cloud preview environment (HMR is disabled in AI Studio iframe)
+      if (typeof window !== 'undefined' && window.WebSocket) {
+        var NativeWebSocket = window.WebSocket;
+        window.WebSocket = function(url, protocols) {
+          var isHmr = false;
+          try {
+            var urlStr = String(url || '');
+            var protoStr = Array.isArray(protocols) ? protocols.join(',') : String(protocols || '');
+            if (
+              protoStr.indexOf('vite-hmr') !== -1 ||
+              urlStr.indexOf('vite') !== -1 ||
+              urlStr.indexOf('ais-dev-') !== -1 ||
+              urlStr.indexOf('localhost') !== -1
+            ) {
+              isHmr = true;
+            }
+          } catch (e) {}
+
+          if (isHmr) {
+            var listeners = {};
+            var dummyWs = {
+              readyState: 1, // WebSocket.OPEN
+              CONNECTING: 0,
+              OPEN: 1,
+              CLOSING: 2,
+              CLOSED: 3,
+              url: String(url || ''),
+              protocol: 'vite-hmr',
+              bufferedAmount: 0,
+              extensions: '',
+              binaryType: 'blob',
+              send: function() {},
+              close: function() {
+                dummyWs.readyState = 3;
+              },
+              addEventListener: function(type, fn) {
+                if (!listeners[type]) listeners[type] = [];
+                listeners[type].push(fn);
+                if (type === 'open') {
+                  setTimeout(function() {
+                    try { fn.call(dummyWs, { type: 'open' }); } catch (err) {}
+                  }, 0);
+                }
+              },
+              removeEventListener: function(type, fn) {
+                if (!listeners[type]) return;
+                listeners[type] = listeners[type].filter(function(cb) { return cb !== fn; });
+              },
+              dispatchEvent: function() { return true; },
+              onopen: null,
+              onclose: null,
+              onerror: null,
+              onmessage: null
+            };
+            setTimeout(function() {
+              if (typeof dummyWs.onopen === 'function') {
+                try { dummyWs.onopen.call(dummyWs, { type: 'open' }); } catch (err) {}
+              }
+            }, 0);
+            return dummyWs;
+          }
+          return new NativeWebSocket(url, protocols);
+        };
+        window.WebSocket.prototype = NativeWebSocket.prototype;
+        window.WebSocket.CONNECTING = 0;
+        window.WebSocket.OPEN = 1;
+        window.WebSocket.CLOSING = 2;
+        window.WebSocket.CLOSED = 3;
+      }
+
+      // 3. Suppress console.error / console.warn for ignorable WebSocket HMR and extension noise
+      var _origConsoleError = console.error;
+      console.error = function() {
+        var args = Array.prototype.slice.call(arguments);
+        var text = args.map(function(a) { return (a && a.stack) ? String(a.stack) : String(a || ''); }).join(' ');
+        if (
+          text.indexOf('WebSocket closed without opened') !== -1 ||
+          (text.indexOf('WebSocket') !== -1 && text.indexOf('vite') !== -1) ||
+          text.indexOf('Cannot redefine property: ethereum') !== -1 ||
+          text.indexOf('chrome-extension://') !== -1
+        ) {
+          return;
         }
-      });
+        _origConsoleError.apply(console, args);
+      };
+
+      // 4. Suppress extension errors and WebSocket HMR disconnects in window error events
+      function isIgnorableError(msg, src) {
+        var m = String(msg || '');
+        var s = String(src || '');
+        return (
+          s.indexOf('chrome-extension://') !== -1 ||
+          s.indexOf('moz-extension://') !== -1 ||
+          m.indexOf('ethereum') !== -1 ||
+          m.indexOf('Cannot redefine property') !== -1 ||
+          m.indexOf('WebSocket') !== -1 ||
+          m.indexOf("reading 'send'") !== -1 ||
+          m.indexOf('vite:ws') !== -1
+        );
+      }
+
       window.addEventListener('error', function(event) {
-        var msg = event?.message || '';
-        if (msg.includes("reading 'send'") || msg.includes('WebSocket')) {
+        if (isIgnorableError(event.message || event.error?.message, event.filename)) {
           event.preventDefault();
+          event.stopImmediatePropagation();
+          return true;
         }
-      });
+      }, true);
+
+      window.addEventListener('unhandledrejection', function(event) {
+        var msg = event?.reason?.message || String(event?.reason || '');
+        if (isIgnorableError(msg, '')) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+        }
+      }, true);
+
+      window.onerror = function(msg, url) {
+        if (isIgnorableError(msg, url)) {
+          return true;
+        }
+      };
     </script>
   </head>
   <body class="bg-[#FAF7F2] text-[#2C2723] antialiased selection:bg-[#E8DCC4] selection:text-[#50371E]">

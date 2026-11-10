@@ -158,7 +158,7 @@
     display: none !important;
   }
 
-  /* Visibility isolation: Only render #recipe-print-document when active */
+  /* Visibility isolation: Only render #recipe-print-document when the export modal is active */
   body:has(#recipe-print-document) * {
     visibility: hidden;
   }
@@ -175,21 +175,39 @@
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 !important;
-    padding: 10mm 12mm !important;
+    padding: 8mm 10mm !important;
     box-shadow: none !important;
-    border: none !important;
-    background: #FFF !important;
     box-sizing: border-box !important;
+    page-break-after: auto;
+  }
+
+  /* Vintage mode in print */
+  body.print-vintage #recipe-print-document {
+    background-color: #FAF7F2 !important;
+    color: #2C2723 !important;
+  }
+
+  /* Kraft paper mode in print */
+  body.print-kraft #recipe-print-document {
+    background-color: #F5EFEB !important;
+    color: #261910 !important;
+  }
+
+  /* Botanical green mode in print */
+  body.print-botanical #recipe-print-document {
+    background-color: #F8FAF7 !important;
+    color: #1E281C !important;
   }
 
   /* Minimal ink mode for black & white printers */
   body.print-minimal-ink #recipe-print-document {
-    background: #FFFFFF !important;
+    background-color: #FFFFFF !important;
     color: #000000 !important;
   }
 
   body.print-minimal-ink #recipe-print-document * {
     color: #000000 !important;
+    border-color: #333333 !important;
   }
 
   /* Page break avoidance on recipe elements */

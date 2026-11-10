@@ -29,6 +29,8 @@ export interface CookingStep {
   tip?: string;
   photoUrl?: string;
   videoUrl?: string; // 步骤关键实拍小视频
+  hasTimerPush?: boolean; // 是否开启定时推送（一键启动全局悬浮计时器）
+  timerLabel?: string; // 自定义定时推送标签
 }
 
 export interface CookingReview {

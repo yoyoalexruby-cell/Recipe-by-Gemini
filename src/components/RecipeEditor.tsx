@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Recipe, RecipeCategory, Ingredient, CookingStep, PRESET_STICKERS, PRESET_WEATHER } from '../types/recipe';
 import { getMergedTaxonomy, addCustomCategory, addCustomSubcategory } from '../utils/taxonomyStorage';
-import { X, Plus, Trash2, Camera, Star, Check, Sparkles, ChefHat, Film, Tag, Edit3, Sliders, Play, Upload, Flame, Zap, ChevronDown, ChevronUp, Activity } from 'lucide-react';
+import { X, Plus, Trash2, Camera, Star, Check, Sparkles, ChefHat, Film, Tag, Edit3, Sliders, Play, Upload, Flame, Zap, ChevronDown, ChevronUp, Activity, Bell, BellOff, Timer } from 'lucide-react';
 import { compressImageFile } from '../utils/storage';
 import { VideoPlayer } from './VideoPlayer';
 import { ImageEditorModal } from './ImageEditorModal';
@@ -15,13 +15,15 @@ interface RecipeEditorProps {
   onSave: (recipe: Recipe) => void;
   onCancel: () => void;
   currentUser?: UserProfile | null;
+  onStartTimer?: (minutes: number, label: string) => void;
 }
 
 export const RecipeEditor: React.FC<RecipeEditorProps> = ({
   initialRecipe,
   onSave,
   onCancel,
-  currentUser: propUser
+  currentUser: propUser,
+  onStartTimer
 }) => {
   const isEditing = Boolean(initialRecipe);
   const currentUser = propUser || getCurrentUser();
@@ -207,7 +209,8 @@ export const RecipeEditor: React.FC<RecipeEditorProps> = ({
         title: `步骤 ${steps.length + 1}`,
         description: '',
         durationMinutes: 5,
-        heat: '中火'
+        heat: '中火',
+        hasTimerPush: true
       }
     ]);
   };
@@ -1262,7 +1265,7 @@ export const RecipeEditor: React.FC<RecipeEditorProps> = ({
                         />
                       </div>
 
-                      <div className="flex items-center gap-2 text-xs">
+                      <div className="flex items-center gap-2 text-xs flex-wrap">
                         <select
                           value={st.heat || '中火'}
                           onChange={(e) => updateStep(idx, 'heat', e.target.value)}
@@ -1289,15 +1292,75 @@ export const RecipeEditor: React.FC<RecipeEditorProps> = ({
                           <span className="text-[#9A9085]">分</span>
                         </div>
 
+                        {/* 定时推送按钮：开启后在 CookingExecutionView 中突出显示并一键启动悬浮计时器 */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const current = st.hasTimerPush !== false;
+                            updateStep(idx, 'hasTimerPush', !current);
+                          }}
+                          className={`px-2 py-1 rounded text-xs font-medium border flex items-center gap-1 transition-colors ${
+                            st.hasTimerPush !== false && (st.durationMinutes || 0) > 0
+                              ? 'bg-amber-50 border-amber-300 text-amber-900'
+                              : 'bg-white border-[#EADBCE] text-[#9A9085] hover:text-[#5A5248]'
+                          }`}
+                          title="在编辑菜谱步骤时为‘烹饪时长’添加‘定时推送’，在 CookingExecutionView 中可一键启动全局悬浮计时器"
+                        >
+                          {st.hasTimerPush !== false && (st.durationMinutes || 0) > 0 ? (
+                            <>
+                              <Bell className="w-3.5 h-3.5 text-amber-600 fill-amber-500/20" />
+                              <span>定时推送已开启</span>
+                            </>
+                          ) : (
+                            <>
+                              <BellOff className="w-3.5 h-3.5 text-[#9A9085]" />
+                              <span>添加定时推送</span>
+                            </>
+                          )}
+                        </button>
+
+                        {/* 一键启动悬浮计时器测试 */}
+                        {(st.durationMinutes || 0) > 0 && onStartTimer && (
+                          <button
+                            type="button"
+                            onClick={() => onStartTimer(st.durationMinutes || 5, `${title || '菜谱'} - 步骤${idx + 1}: ${st.title}`)}
+                            className="px-2 py-1 bg-[#C85A32]/10 hover:bg-[#C85A32] text-[#C85A32] hover:text-white border border-[#C85A32]/30 rounded text-xs font-semibold transition-colors flex items-center gap-1"
+                            title="一键启动全局悬浮计时器"
+                          >
+                            <Timer className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">试启计时</span>
+                          </button>
+                        )}
+
                         <button
                           type="button"
                           onClick={() => removeStep(idx)}
-                          className="p-1 text-[#9A9085] hover:text-rose-600 rounded ml-2"
+                          className="p-1 text-[#9A9085] hover:text-rose-600 rounded ml-1"
+                          title="删除该步骤"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
+
+                    {/* 定时推送状态提示栏 */}
+                    {st.hasTimerPush !== false && (st.durationMinutes || 0) > 0 && (
+                      <div className="text-[11px] text-amber-800 bg-amber-50/80 border border-amber-200/70 px-2.5 py-1.5 rounded-lg flex items-center justify-between gap-2">
+                        <span className="flex items-center gap-1.5">
+                          <Bell className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                          <span>已关联 <strong>{st.durationMinutes} 分钟</strong>烹饪时长 · 下厨执行时将突出显示「一键启动全局悬浮计时器」</span>
+                        </span>
+                        {onStartTimer && (
+                          <button
+                            type="button"
+                            onClick={() => onStartTimer(st.durationMinutes || 5, `${title || '菜谱'} - 步骤${idx + 1}: ${st.title}`)}
+                            className="text-[11px] text-[#C85A32] font-bold hover:underline shrink-0"
+                          >
+                            启动悬浮计时器
+                          </button>
+                        )}
+                      </div>
+                    )}
 
                     <div>
                       <div className="flex items-center justify-between mb-1.5">

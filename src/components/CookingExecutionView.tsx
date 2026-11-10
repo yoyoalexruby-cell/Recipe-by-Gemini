@@ -1,15 +1,19 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Recipe, Ingredient, CookingStep } from '../types/recipe';
 import { 
   CheckCircle2, Circle, Copy, Plus, Trash2, Check, 
   Sparkles, ExternalLink, ChefHat, Clock, Flame, 
   Timer, ShoppingCart, ArrowRight, RotateCcw, Calendar,
-  Utensils, BookOpen, AlertCircle, Bell, Settings
+  Utensils, BookOpen, AlertCircle, Bell, Settings, ShoppingBag,
+  Volume2, Mic
 } from 'lucide-react';
 import { VideoPlayer } from './VideoPlayer';
 import { MarkCookingModal } from './MarkCookingModal';
 import { markRecipeCookedOnDate } from '../utils/cookingLogStorage';
 import { ShoppingListModal } from './ShoppingListModal';
+import { QuickPurchaseModal } from './QuickPurchaseModal';
+import { CookingVoiceAssistant } from './CookingVoiceAssistant';
+import { PurchaseItem } from '../utils/shoppingPlatforms';
 import { UserProfile } from '../types/auth';
 
 interface CookingExecutionViewProps {
@@ -28,6 +32,7 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
   // If no recipes, handle gracefully
   const hasRecipes = recipes.length > 0;
   const [isShoppingListOpen, setIsShoppingListOpen] = useState(false);
+  const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
 
   // Selected recipe to cook right now
   const [activeRecipeId, setActiveRecipeId] = useState<string>(
@@ -38,9 +43,10 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
   const activeRecipe = recipes.find(r => r.id === activeRecipeId) || recipes[0] || null;
   const [servings, setServings] = useState<number>(activeRecipe?.baseServings || 2);
 
-  // When active recipe changes, sync baseServings
+  // When active recipe changes, sync baseServings and reset voice step
   const handleSelectRecipe = (id: string) => {
     setActiveRecipeId(id);
+    setCurrentSpokenStepIndex(0);
     const found = recipes.find(r => r.id === id);
     if (found) {
       setServings(found.baseServings || 2);
@@ -52,6 +58,20 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
   
   // Checked state for cooking steps
   const [checkedSteps, setCheckedSteps] = useState<Record<string, boolean>>({});
+
+  // Active step for voice read-aloud and voice navigation
+  const [currentSpokenStepIndex, setCurrentSpokenStepIndex] = useState<number>(0);
+  const stepCardRefs = useRef<Record<number, HTMLDivElement | null>>({});
+
+  // Smooth scroll to active step when spoken step changes
+  useEffect(() => {
+    if (stepCardRefs.current[currentSpokenStepIndex]) {
+      stepCardRefs.current[currentSpokenStepIndex]?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest'
+      });
+    }
+  }, [currentSpokenStepIndex]);
 
   // Extra pantry items
   const [extraItems, setExtraItems] = useState<Array<{ id: string; name: string; amount: string; checked: boolean }>>([
@@ -67,6 +87,21 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
   const [isMarkModalOpen, setIsMarkModalOpen] = useState(false);
   const [completionToast, setCompletionToast] = useState<string | null>(null);
 
+  // Active Timer Step Association & Push State
+  const [activeTimerStepId, setActiveTimerStepId] = useState<string | null>(null);
+  const [timerToast, setTimerToast] = useState<string | null>(null);
+
+  const handleStartStepTimer = (st: CookingStep, idx: number) => {
+    const duration = st.durationMinutes || 5;
+    const label = st.timerLabel || `${activeRecipe?.title || '菜谱'} · 第${idx + 1}步：${st.title}`;
+    if (onStartTimer) {
+      onStartTimer(duration, label);
+      setActiveTimerStepId(st.id);
+      setTimerToast(`⏱️ 已将第 ${idx + 1} 步「${st.title}」的 ${duration} 分钟定时推送至悬浮计时器！`);
+      setTimeout(() => setTimerToast(null), 3500);
+    }
+  };
+
   // Scale ingredient amount based on servings
   const multiplier = activeRecipe ? servings / (activeRecipe.baseServings || 1) : 1;
   const formatScaledAmount = (ing: Ingredient) => {
@@ -77,6 +112,32 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
     }
     return ing.amount;
   };
+
+  // Convert current recipe ingredients and extra items to PurchaseItems
+  const executionPurchaseItems: PurchaseItem[] = useMemo(() => {
+    if (!activeRecipe) return [];
+    const list: PurchaseItem[] = activeRecipe.ingredients.map((ing) => ({
+      id: ing.id,
+      name: ing.name,
+      amount: formatScaledAmount(ing),
+      unit: ing.unit,
+      category: ing.category,
+      checked: Boolean(checkedIngredients[ing.id]),
+      recipeTitle: activeRecipe.title
+    }));
+    extraItems.forEach((e) => {
+      list.push({
+        id: e.id,
+        name: e.name,
+        amount: e.amount,
+        unit: '',
+        category: 'extra',
+        checked: Boolean(e.checked),
+        recipeTitle: '加购杂品'
+      });
+    });
+    return list;
+  }, [activeRecipe, checkedIngredients, extraItems, multiplier]);
 
   // Generate safe shopping search URL for an ingredient
   const getShoppingUrl = (ingredientName: string) => {
@@ -96,8 +157,11 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
     setCheckedIngredients(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const toggleStepCheck = (id: string) => {
-    setCheckedSteps(prev => ({ ...prev, [id]: !prev[id] }));
+  const toggleStepCheck = (id: string, forceState?: boolean) => {
+    setCheckedSteps(prev => ({ 
+      ...prev, 
+      [id]: forceState !== undefined ? forceState : !prev[id] 
+    }));
   };
 
   const toggleExtraCheck = (id: string) => {
@@ -128,6 +192,7 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
     if (window.confirm('确定要重置当前菜谱的所有备料和制作勾选进度吗？')) {
       setCheckedIngredients({});
       setCheckedSteps({});
+      setCurrentSpokenStepIndex(0);
       setExtraItems(prev => prev.map(e => ({ ...e, checked: false })));
     }
   };
@@ -305,7 +370,7 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
         {/* LEFT COLUMN: PHASE 1 食材备料清单 (逐步打勾 + 购物超链) */}
         <div className="lg:col-span-5 bg-white border border-[#EADBCE] rounded-2xl p-5 sm:p-6 paper-shadow space-y-5">
           
-          <div className="flex items-center justify-between pb-3 border-b border-[#EADBCE]">
+          <div className="flex items-center justify-between pb-3 border-b border-[#EADBCE] gap-2 flex-wrap">
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 rounded-lg bg-[#FAF3EC] text-[#C85A32] flex items-center justify-center">
                 <ShoppingCart className="w-4 h-4" />
@@ -320,35 +385,58 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
               </div>
             </div>
 
-            <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded-full ${
-              isAllIngredientsReady 
-                ? 'bg-emerald-100 text-emerald-800' 
-                : 'bg-amber-100 text-amber-800'
-            }`}>
-              {completedIngredients}/{totalIngredients} 备齐
-            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsPurchaseModalOpen(true)}
+                className="px-2.5 py-1 text-xs font-semibold text-[#C85A32] bg-[#FAF3EC] hover:bg-[#C85A32] hover:text-white border border-[#C85A32]/40 rounded-lg transition-colors flex items-center gap-1 shadow-2xs"
+                title="一键选购全部食材（京东/淘宝直达 & 二维码带走）"
+              >
+                <ShoppingBag className="w-3.5 h-3.5" />
+                <span>一键选购</span>
+              </button>
+
+              <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded-full ${
+                isAllIngredientsReady 
+                  ? 'bg-emerald-100 text-emerald-800' 
+                  : 'bg-amber-100 text-amber-800'
+              }`}>
+                {completedIngredients}/{totalIngredients} 备齐
+              </span>
+            </div>
           </div>
 
-          {/* One-Click Convert to Categorized Shopping List Button */}
+          {/* Shopping & Purchase Actions Bar */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3 bg-[#FAF3EC] border border-[#C85A32]/30 rounded-xl">
             <div className="space-y-0.5">
               <span className="text-xs font-bold text-[#2C2723] flex items-center gap-1.5">
-                <ShoppingCart className="w-3.5 h-3.5 text-[#C85A32]" />
-                <span>一键转为分类购物清单</span>
+                <ShoppingBag className="w-3.5 h-3.5 text-[#C85A32]" />
+                <span>快速采购与分类购物清单</span>
               </span>
               <p className="text-[10px] text-[#7A7268]">
-                智能归类蔬菜、肉类、调料 · 缺货一键预约提醒
+                一键遍历食材生成京东/淘宝链接 · 支持二维码扫码带走
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => setIsShoppingListOpen(true)}
-              className="px-3 py-1.5 bg-[#C85A32] hover:bg-[#B34C26] text-white text-xs font-semibold rounded-lg shadow-2xs transition-all flex items-center justify-center gap-1.5 shrink-0"
-              title="将勾选或待采购食材一键生成分类购物清单，并设置缺货预约提醒"
-            >
-              <span>查看分类采购单 ({completedIngredients}/{totalIngredients})</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setIsPurchaseModalOpen(true)}
+                className="px-3 py-1.5 bg-[#C85A32] hover:bg-[#B34C26] text-white text-xs font-bold rounded-lg shadow-2xs transition-all flex items-center justify-center gap-1.5 shrink-0 active:scale-[0.98]"
+                title="遍历当前食材列表，生成完整清单购物链接（京东/淘宝），并生成二维码以便手机扫码带走"
+              >
+                <ShoppingBag className="w-3.5 h-3.5" />
+                <span>一键选购 ({totalIngredients - completedIngredients}缺 / 扫码)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsShoppingListOpen(true)}
+                className="px-3 py-1.5 bg-white hover:bg-[#FAF7F2] border border-[#EADBCE] hover:border-[#C85A32] text-[#C85A32] text-xs font-semibold rounded-lg shadow-2xs transition-all flex items-center justify-center gap-1.5 shrink-0"
+                title="将勾选或待采购食材一键生成分类购物清单，并设置缺货预约提醒"
+              >
+                <span>分类采购单</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
 
           {/* Main ingredients section */}
@@ -628,6 +716,19 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
             </button>
           </form>
 
+          {/* Bottom Quick-Action to buy all ingredients */}
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={() => setIsPurchaseModalOpen(true)}
+              className="w-full py-2.5 px-3 bg-gradient-to-r from-[#FAF3EC] to-[#FAF7F2] hover:from-[#FAF0E6] hover:to-[#FAF3EC] border border-[#C85A32]/40 rounded-xl text-xs font-bold text-[#C85A32] transition-all flex items-center justify-center gap-2 shadow-2xs group active:scale-[0.99]"
+              title="遍历当前所有食材，一键生成京东/淘宝搜索链接，并生成带走二维码"
+            >
+              <ShoppingBag className="w-4 h-4 text-[#C85A32] group-hover:scale-110 transition-transform" />
+              <span>一键选购全部 {totalIngredients} 种食材（京东/淘宝直达 & 二维码扫码带走）</span>
+            </button>
+          </div>
+
         </div>
 
         {/* RIGHT COLUMN: PHASE 2 烹饪步骤与时序清关 (逐步打勾) */}
@@ -648,14 +749,58 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
               </div>
             </div>
 
-            <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded-full ${
-              isAllStepsFinished 
-                ? 'bg-emerald-100 text-emerald-800' 
-                : 'bg-amber-100 text-amber-800'
-            }`}>
-              {completedSteps}/{totalSteps} 步骤完成
-            </span>
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              {activeRecipe && activeRecipe.steps.some(s => (s.durationMinutes || 0) > 0) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const withTimer = activeRecipe.steps.filter(s => (s.durationMinutes || 0) > 0);
+                    const curStep = (activeRecipe.steps[currentSpokenStepIndex] && (activeRecipe.steps[currentSpokenStepIndex].durationMinutes || 0) > 0)
+                      ? activeRecipe.steps[currentSpokenStepIndex]
+                      : withTimer[0];
+                    if (curStep) {
+                      const idx = activeRecipe.steps.findIndex(s => s.id === curStep.id);
+                      handleStartStepTimer(curStep, idx >= 0 ? idx : 0);
+                    }
+                  }}
+                  className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300/80 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs"
+                  title="一键启动当前步骤或首个定时推送的悬浮计时器"
+                >
+                  <Bell className="w-3.5 h-3.5 text-amber-700 fill-amber-500/20" />
+                  <span>
+                    关联 {activeRecipe.steps.filter(s => (s.durationMinutes || 0) > 0).length} 个定时点
+                  </span>
+                </button>
+              )}
+
+              <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded-full ${
+                isAllStepsFinished 
+                  ? 'bg-emerald-100 text-emerald-800' 
+                  : 'bg-amber-100 text-amber-800'
+              }`}>
+                {completedSteps}/{totalSteps} 步骤完成
+              </span>
+            </div>
           </div>
+
+          {/* Voice Broadcast & Hands-Free Interaction Panel */}
+          {activeRecipe && activeRecipe.steps.length > 0 && (
+            <CookingVoiceAssistant
+              recipeTitle={activeRecipe.title}
+              steps={activeRecipe.steps}
+              currentStepIndex={currentSpokenStepIndex}
+              onStepChange={(newIdx) => setCurrentSpokenStepIndex(newIdx)}
+              onToggleStepCheck={toggleStepCheck}
+              checkedSteps={checkedSteps}
+              onStartTimer={onStartTimer}
+              onFinishAll={() => {
+                const allChecked: Record<string, boolean> = {};
+                activeRecipe.steps.forEach(s => { allChecked[s.id] = true; });
+                setCheckedSteps(allChecked);
+                setIsMarkModalOpen(true);
+              }}
+            />
+          )}
 
           {/* Steps Timeline Checklist */}
           {(!activeRecipe?.steps || activeRecipe.steps.length === 0) ? (
@@ -666,17 +811,21 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
             <div className="space-y-4">
               {activeRecipe.steps.map((st, idx) => {
                 const isFinished = checkedSteps[st.id];
+                const isCurrentlySpoken = idx === currentSpokenStepIndex;
 
                 return (
                   <div
                     key={st.id || idx}
+                    ref={(el) => { stepCardRefs.current[idx] = el; }}
                     className={`p-4 rounded-xl border transition-all ${
-                      isFinished 
-                        ? 'bg-[#FAF7F2] border-[#EADBCE] opacity-75' 
-                        : 'bg-white border-[#EADBCE] hover:border-[#C85A32]/60 shadow-2xs'
+                      isCurrentlySpoken
+                        ? 'border-[#C85A32] ring-2 ring-[#C85A32]/25 bg-[#FFFDF9] shadow-md'
+                        : isFinished 
+                          ? 'bg-[#FAF7F2] border-[#EADBCE] opacity-75' 
+                          : 'bg-white border-[#EADBCE] hover:border-[#C85A32]/60 shadow-2xs'
                     }`}
                   >
-                    {/* Step Top Bar: Checkbox + Title + Fire/Time badges */}
+                    {/* Step Top Bar: Checkbox + Title + Fire/Time badges + Voice Speak */}
                     <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
                       <div className="flex items-center gap-2.5">
                         <button
@@ -695,9 +844,32 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
                         <h4 className={`text-sm font-bold font-serif ${isFinished ? 'line-through text-[#7A7268]' : 'text-[#2C2723]'}`}>
                           步骤 {idx + 1}：{st.title}
                         </h4>
+
+                        {/* Active Voice Spoken Indicator */}
+                        {isCurrentlySpoken && (
+                          <span className="px-2 py-0.5 rounded-md bg-[#FAF3EC] text-[#C85A32] border border-[#C85A32]/30 font-semibold flex items-center gap-1 text-[11px] animate-pulse">
+                            <Volume2 className="w-3 h-3" />
+                            <span>播报中</span>
+                          </span>
+                        )}
                       </div>
 
-                      <div className="flex items-center gap-2 text-xs">
+                      <div className="flex items-center gap-2 text-xs flex-wrap">
+                        {/* Read this step button */}
+                        <button
+                          type="button"
+                          onClick={() => setCurrentSpokenStepIndex(idx)}
+                          className={`px-2 py-0.5 rounded-md text-[11px] font-medium border transition-colors flex items-center gap-1 ${
+                            isCurrentlySpoken
+                              ? 'bg-[#C85A32] text-white border-[#C85A32]'
+                              : 'bg-white hover:bg-[#FAF3EC] text-[#7A7268] hover:text-[#C85A32] border-[#EADBCE]'
+                          }`}
+                          title="朗读当前步骤"
+                        >
+                          <Volume2 className="w-3 h-3" />
+                          <span className="hidden sm:inline">{isCurrentlySpoken ? '正在播报' : '朗读此步'}</span>
+                        </button>
+
                         {st.heat && (
                           <span className="px-2 py-0.5 rounded-md bg-[#FAF3EC] text-[#C85A32] border border-[#C85A32]/30 font-semibold flex items-center gap-1">
                             <Flame className="w-3 h-3" />
@@ -708,12 +880,18 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
                         {st.durationMinutes && (
                           <button
                             type="button"
-                            onClick={() => onStartTimer && onStartTimer(st.durationMinutes || 5, `${activeRecipe.title} - 步骤${idx + 1}`)}
-                            className="px-2 py-0.5 rounded-md bg-stone-100 hover:bg-stone-200 text-[#5A5248] transition-colors font-mono flex items-center gap-1"
-                            title="为该步骤启动计时器"
+                            onClick={() => handleStartStepTimer(st, idx)}
+                            className={`px-2.5 py-1 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-all shadow-2xs ${
+                              activeTimerStepId === st.id
+                                ? 'bg-emerald-600 text-white ring-2 ring-emerald-300 animate-pulse'
+                                : st.hasTimerPush !== false
+                                  ? 'bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300'
+                                  : 'bg-stone-100 hover:bg-stone-200 text-[#5A5248]'
+                            }`}
+                            title="点击一键启动全局悬浮计时器"
                           >
-                            <Timer className="w-3 h-3 text-[#C85A32]" />
-                            <span>{st.durationMinutes}分钟</span>
+                            <Bell className={`w-3.5 h-3.5 ${activeTimerStepId === st.id ? 'text-white' : 'text-[#C85A32]'}`} />
+                            <span>{activeTimerStepId === st.id ? '计时中' : '定时推送'}: {st.durationMinutes}分钟</span>
                           </button>
                         )}
                       </div>
@@ -729,6 +907,62 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
                       <div className="mt-2.5 ml-8 p-2.5 bg-[#FFFDF9] border border-[#E8DCC4] rounded-lg text-xs text-[#8C5D1E] flex items-start gap-2">
                         <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[#C85A32]" />
                         <span>{st.tip}</span>
+                      </div>
+                    )}
+
+                    {/* Dedicated Step Timer Push Control Bar */}
+                    {st.durationMinutes && st.durationMinutes > 0 && (
+                      <div className={`mt-3 ml-8 p-3 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs transition-all ${
+                        activeTimerStepId === st.id
+                          ? 'bg-emerald-50/90 border-emerald-300'
+                          : 'bg-gradient-to-r from-[#FFFDF9] to-[#FAF7F2] border-[#EADBCE]'
+                      }`}>
+                        <div className="flex items-center gap-2.5">
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                            activeTimerStepId === st.id
+                              ? 'bg-emerald-600 text-white'
+                              : 'bg-[#C85A32]/10 text-[#C85A32]'
+                          }`}>
+                            <Timer className={`w-4 h-4 ${activeTimerStepId === st.id ? 'animate-spin-slow' : ''}`} />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs font-bold text-[#2C2723]">
+                                步骤烹饪时长：{st.durationMinutes} 分钟
+                              </span>
+                              {st.heat && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#FAF3EC] text-[#C85A32] border border-[#C85A32]/20 font-medium">
+                                  {st.heat}
+                                </span>
+                              )}
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold border border-amber-300/40">
+                                🔔 定时推送
+                              </span>
+                              {activeTimerStepId === st.id && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold animate-pulse">
+                                  ⏱️ 悬浮计时运行中
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-[#7A7268] mt-0.5">
+                              已与全局厨房计时器深度关联，点击一键在屏幕右下角启动悬浮倒计时
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleStartStepTimer(st, idx)}
+                          className={`w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-xs min-h-[44px] ${
+                            activeTimerStepId === st.id
+                              ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                              : 'bg-[#C85A32] hover:bg-[#B34C26] text-white'
+                          }`}
+                          title="一键启动全局悬浮计时器"
+                        >
+                          <Bell className="w-4 h-4" />
+                          <span>{activeTimerStepId === st.id ? '已开启倒计时 · 点击再次推送' : `一键启动悬浮计时器 (${st.durationMinutes}分)`}</span>
+                        </button>
                       </div>
                     )}
 
@@ -813,11 +1047,29 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
         />
       )}
 
+      {/* Quick Online Purchase & QR Code Modal */}
+      {activeRecipe && (
+        <QuickPurchaseModal
+          isOpen={isPurchaseModalOpen}
+          onClose={() => setIsPurchaseModalOpen(false)}
+          items={executionPurchaseItems}
+          sourceTitle={`制作工作台 · 《${activeRecipe.title}》(${servings}人份)`}
+        />
+      )}
+
       {/* Completion Toast */}
       {completionToast && (
         <div className="fixed bottom-6 right-6 z-50 bg-[#2C2723] text-amber-100 text-xs py-2.5 px-4 rounded-lg border border-[#EADBCE] shadow-xl flex items-center gap-2 animate-fade-in">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
           <span>{completionToast}</span>
+        </div>
+      )}
+
+      {/* Timer Push Notification Toast */}
+      {timerToast && (
+        <div className="fixed top-20 right-6 z-50 bg-[#2C2723] text-amber-100 text-xs py-2.5 px-4 rounded-xl border border-[#EADBCE] shadow-2xl flex items-center gap-2 animate-fade-in">
+          <Bell className="w-4 h-4 text-amber-400 animate-bounce" />
+          <span>{timerToast}</span>
         </div>
       )}
 

@@ -24,7 +24,7 @@ export const SHOPPING_PLATFORMS: ShoppingPlatform[] = [
   {
     id: 'taobao',
     name: '淘宝 / 天猫生鲜超市',
-    shortName: '天猫生鲜',
+    shortName: '淘宝 / 天猫',
     icon: '🛍️',
     badge: '品类最全',
     color: 'text-orange-700 bg-orange-50 border-orange-200',

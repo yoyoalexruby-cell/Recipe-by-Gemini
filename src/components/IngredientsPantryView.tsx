@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Recipe } from '../types/recipe';
 import { ShoppingBag, CheckCircle2, Circle, Copy, Plus, Trash2, Check, Sparkles } from 'lucide-react';
 import { getPantryCheckedIds, savePantryCheckedIds } from '../utils/storage';
+import { QuickPurchaseModal } from './QuickPurchaseModal';
+import { PurchaseItem } from '../utils/shoppingPlatforms';
 
 interface IngredientsPantryViewProps {
   recipes: Recipe[];
@@ -25,6 +27,7 @@ export const IngredientsPantryView: React.FC<IngredientsPantryViewProps> = ({
   const [newExtraName, setNewExtraName] = useState('');
   const [newExtraAmount, setNewExtraAmount] = useState('');
   const [copied, setCopied] = useState(false);
+  const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
 
   // Toggle recipe in planner
   const toggleRecipeSelection = (id: string) => {
@@ -123,6 +126,60 @@ export const IngredientsPantryView: React.FC<IngredientsPantryViewProps> = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const allPurchaseItems: PurchaseItem[] = useMemo(() => {
+    const list: PurchaseItem[] = [];
+
+    mainItems.forEach((m) => {
+      list.push({
+        id: m.uniqueKey,
+        name: m.name,
+        amount: m.amountStr,
+        unit: '',
+        category: 'main',
+        checked: Boolean(checkedIds[m.uniqueKey]),
+        recipeTitle: m.recipeTitle
+      });
+    });
+
+    seasoningItems.forEach((s) => {
+      list.push({
+        id: s.uniqueKey,
+        name: s.name,
+        amount: s.amountStr,
+        unit: '',
+        category: 'seasoning',
+        checked: Boolean(checkedIds[s.uniqueKey]),
+        recipeTitle: s.recipeTitle
+      });
+    });
+
+    garnishItems.forEach((g) => {
+      list.push({
+        id: g.uniqueKey,
+        name: g.name,
+        amount: g.amountStr,
+        unit: '',
+        category: 'garnish',
+        checked: Boolean(checkedIds[g.uniqueKey]),
+        recipeTitle: g.recipeTitle
+      });
+    });
+
+    extraItems.forEach((e) => {
+      list.push({
+        id: e.id,
+        name: e.name,
+        amount: e.amount,
+        unit: '',
+        category: 'extra',
+        checked: Boolean(e.checked),
+        recipeTitle: '加购杂品'
+      });
+    });
+
+    return list;
+  }, [mainItems, seasoningItems, garnishItems, extraItems, checkedIds]);
+
   const clearChecked = () => {
     const next: Record<string, boolean> = {};
     setCheckedIds(next);
@@ -144,7 +201,16 @@ export const IngredientsPantryView: React.FC<IngredientsPantryViewProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => setIsPurchaseModalOpen(true)}
+            className="px-3.5 py-1.5 text-xs font-semibold text-[#2C2723] bg-white border border-[#EADBCE] hover:border-[#C85A32] hover:text-[#C85A32] rounded-md transition-all shadow-2xs flex items-center gap-1.5"
+            title="关联主流购物平台一键直达搜索或扫码手机采购"
+          >
+            <ShoppingBag className="w-3.5 h-3.5 text-[#C85A32]" />
+            <span>一键选购 ({allPurchaseItems.filter((i) => !i.checked).length}缺)</span>
+          </button>
+
           <button
             onClick={handleCopyShoppingList}
             className="px-3.5 py-1.5 text-xs font-medium text-white bg-[#C85A32] hover:bg-[#B34C26] rounded-md transition-all shadow-xs flex items-center gap-1.5"
@@ -423,6 +489,14 @@ export const IngredientsPantryView: React.FC<IngredientsPantryViewProps> = ({
         </div>
 
       </div>
+
+      {/* Quick Purchase Modal for Pantry Planner */}
+      <QuickPurchaseModal
+        isOpen={isPurchaseModalOpen}
+        onClose={() => setIsPurchaseModalOpen(false)}
+        items={allPurchaseItems}
+        sourceTitle={`本周备菜日程 (${selectedRecipes.map((r) => r.title).join('、') || '备料库'})`}
+      />
     </div>
   );
 };

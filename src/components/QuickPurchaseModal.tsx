@@ -21,6 +21,8 @@ export const QuickPurchaseModal: React.FC<QuickPurchaseModalProps> = ({
 }) => {
   const [selectedPlatformId, setSelectedPlatformId] = useState<string>('jd');
   const [filterMode, setFilterMode] = useState<'missing' | 'all'>('missing');
+  const [searchScope, setSearchScope] = useState<'bundle' | 'single'>('bundle');
+  const [qrContentType, setQrContentType] = useState<'search' | 'checklist'>('search');
   const [activeIngredientName, setActiveIngredientName] = useState<string | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [isCopied, setIsCopied] = useState(false);
@@ -39,25 +41,63 @@ export const QuickPurchaseModal: React.FC<QuickPurchaseModalProps> = ({
     return items;
   }, [filterMode, missingItems, items]);
 
-  // Selected item or bundle
+  // Complete bundle keyword from all ingredients in display
+  const bundleKeyword = useMemo(() => {
+    const cleanNames = displayItems
+      .map(i => i.name.replace(/\(.*?\)|（.*?）/g, '').trim())
+      .filter(Boolean);
+    // Join top 8 ingredients for combined e-commerce query
+    return cleanNames.slice(0, 8).join(' ');
+  }, [displayItems]);
+
+  // Active keyword based on scope
   const activeKeyword = useMemo(() => {
-    if (activeIngredientName) return activeIngredientName;
-    if (displayItems.length > 0) return displayItems[0].name;
-    return '生鲜食材';
-  }, [activeIngredientName, displayItems]);
+    if (searchScope === 'single' && activeIngredientName) {
+      return activeIngredientName;
+    }
+    if (searchScope === 'bundle') {
+      return bundleKeyword || '生鲜食材';
+    }
+    return activeIngredientName || bundleKeyword || '生鲜食材';
+  }, [searchScope, activeIngredientName, bundleKeyword]);
 
   const targetSearchUrl = useMemo(() => {
     return activePlatform.getSearchUrl(activeKeyword);
   }, [activePlatform, activeKeyword]);
+
+  // Formatted checklist text for text QR code take-away
+  const formattedChecklistText = useMemo(() => {
+    const lines = [
+      `【食味手记 · 烹饪食材采买清单】`,
+      `菜谱：${sourceTitle}`,
+      `生成时间：${new Date().toLocaleDateString('zh-CN')} ${new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`,
+      `---------------------------------`,
+      ...displayItems.map((ing, idx) => {
+        const stateMark = ing.checked ? '[已备]' : '[待购]';
+        return `${idx + 1}. ${stateMark} ${ing.name}：${ing.amount} ${ing.unit}`;
+      }),
+      `---------------------------------`,
+      `共 ${displayItems.length} 项用料。下厨双手带油水，手机备忘轻松买。`
+    ];
+    return lines.join('\n');
+  }, [sourceTitle, displayItems]);
+
+  // What to encode in the QR code: search URL or formatted text checklist
+  const qrRawContent = useMemo(() => {
+    if (qrContentType === 'checklist') {
+      return formattedChecklistText;
+    }
+    return targetSearchUrl;
+  }, [qrContentType, formattedChecklistText, targetSearchUrl]);
 
   // Generate QR Code dynamically
   useEffect(() => {
     if (!isOpen) return;
 
     let isMounted = true;
-    QRCode.toDataURL(targetSearchUrl, {
-      width: 260,
-      margin: 1,
+    QRCode.toDataURL(qrRawContent, {
+      width: 280,
+      margin: 1.5,
       color: {
         dark: '#2C2723',
         light: '#FFFFFF'
@@ -73,7 +113,7 @@ export const QuickPurchaseModal: React.FC<QuickPurchaseModalProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [isOpen, targetSearchUrl]);
+  }, [isOpen, qrRawContent]);
 
   if (!isOpen) return null;
 
@@ -90,6 +130,16 @@ export const QuickPurchaseModal: React.FC<QuickPurchaseModalProps> = ({
   const handleCopyAllMissingBundle = () => {
     const names = displayItems.map((i) => i.name).join(' ');
     handleCopySearchText(names, '全部待购清单');
+  };
+
+  const handleDownloadQrImage = () => {
+    if (!qrDataUrl) return;
+    const a = document.createElement('a');
+    a.href = qrDataUrl;
+    a.download = `culinary-shopping-qr-${Date.now()}.png`;
+    a.click();
+    setToastMsg('二维码图片已保存，可发送至微信或相册扫码！');
+    setTimeout(() => setToastMsg(null), 3000);
   };
 
   return (
@@ -179,22 +229,95 @@ export const QuickPurchaseModal: React.FC<QuickPurchaseModalProps> = ({
           
           {/* Left Column: QR Code & Mobile Scan Card (5 cols) */}
           <div className="md:col-span-5 flex flex-col gap-4">
+            
+            {/* Mode Switcher: E-Commerce Search URL vs Checklist Text QR Code */}
+            <div className="flex items-center gap-1 p-1 bg-white rounded-xl border border-[#EADBCE] shadow-2xs">
+              <button
+                type="button"
+                onClick={() => setQrContentType('search')}
+                className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${
+                  qrContentType === 'search'
+                    ? 'bg-[#C85A32] text-white shadow-xs'
+                    : 'text-[#7A7268] hover:text-[#2C2723]'
+                }`}
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>电商搜索直达</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setQrContentType('checklist')}
+                className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${
+                  qrContentType === 'checklist'
+                    ? 'bg-[#C85A32] text-white shadow-xs'
+                    : 'text-[#7A7268] hover:text-[#2C2723]'
+                }`}
+              >
+                <QrCode className="w-3.5 h-3.5" />
+                <span>清单扫码带走</span>
+              </button>
+            </div>
+
             <div className="bg-white border border-[#EADBCE] rounded-xl p-5 shadow-xs flex flex-col items-center text-center">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-[#C85A32] mb-1">
-                <QrCode className="w-4 h-4" />
-                <span>手机扫码立即采购</span>
-              </div>
-              <p className="text-[11px] text-[#7A7268] mb-3">
-                在手机微信 / 相机扫码，直接打开【{activePlatform.shortName}】搜索
-              </p>
+              
+              {qrContentType === 'search' ? (
+                <>
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-[#C85A32] mb-1">
+                    <QrCode className="w-4 h-4" />
+                    <span>手机扫码在【{activePlatform.shortName}】选购</span>
+                  </div>
+                  <p className="text-[11px] text-[#7A7268] mb-2">
+                    微信或自带相机扫码，直接打开该平台的商品搜索页
+                  </p>
+
+                  {/* Scope Selector: Complete Bundle vs Single Item */}
+                  <div className="flex items-center gap-1 p-0.5 bg-[#FAF7F2] rounded-lg border border-[#EADBCE] mb-3 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchScope('bundle');
+                        setActiveIngredientName(null);
+                      }}
+                      className={`px-2.5 py-1 rounded-md font-medium transition-colors ${
+                        searchScope === 'bundle'
+                          ? 'bg-[#2C2723] text-white font-semibold shadow-2xs'
+                          : 'text-[#7A7268] hover:text-[#2C2723]'
+                      }`}
+                    >
+                      🌟 完整清单打包 ({displayItems.length}味)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSearchScope('single')}
+                      className={`px-2.5 py-1 rounded-md font-medium transition-colors ${
+                        searchScope === 'single'
+                          ? 'bg-[#2C2723] text-white font-semibold shadow-2xs'
+                          : 'text-[#7A7268] hover:text-[#2C2723]'
+                      }`}
+                    >
+                      🥬 单项食材精准
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-[#5F7A4D] mb-1">
+                    <QrCode className="w-4 h-4" />
+                    <span>扫码将清单存入手机</span>
+                  </div>
+                  <p className="text-[11px] text-[#7A7268] mb-3">
+                    微信扫一扫即可在手机展示完整备料清单，外出菜场随时核对
+                  </p>
+                </>
+              )}
 
               {/* QR Code Container */}
               <div className="p-3 bg-[#FAF7F2] border border-[#EADBCE] rounded-xl shadow-inner relative group mb-3">
                 {qrDataUrl ? (
                   <img
                     src={qrDataUrl}
-                    alt={`扫码在${activePlatform.shortName}选购`}
-                    className="w-48 h-48 sm:w-52 sm:h-52 object-contain rounded-lg"
+                    alt={qrContentType === 'search' ? `扫码在${activePlatform.shortName}选购` : '扫码查看清单'}
+                    className="w-48 h-48 sm:w-52 sm:h-52 object-contain rounded-lg bg-white p-1"
                   />
                 ) : (
                   <div className="w-48 h-48 flex items-center justify-center text-xs text-[#9A9085]">
@@ -202,31 +325,71 @@ export const QuickPurchaseModal: React.FC<QuickPurchaseModalProps> = ({
                   </div>
                 )}
                 <div className="mt-1 text-[10px] text-[#7A7268] font-mono truncate max-w-[200px]">
-                  正在搜索: <strong className="text-[#C85A32]">{activeKeyword}</strong>
+                  {qrContentType === 'search' ? (
+                    <span>检索词: <strong className="text-[#C85A32]">{activeKeyword}</strong></span>
+                  ) : (
+                    <span>完整清单 · 共 {displayItems.length} 种用料</span>
+                  )}
                 </div>
               </div>
 
-              {/* Target Search Link */}
+              {/* Action Buttons */}
               <div className="w-full space-y-2">
-                <a
-                  href={targetSearchUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full py-2 px-3 rounded-lg bg-[#C85A32] hover:bg-[#B34C26] active:scale-[0.98] text-white text-xs font-semibold shadow-xs flex items-center justify-center gap-1.5 transition-all"
-                  title="在新标签页中打开搜索"
-                >
-                  <span>在 {activePlatform.shortName} 搜索「{activeKeyword}」</span>
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
+                {qrContentType === 'search' ? (
+                  <>
+                    <a
+                      href={targetSearchUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full py-2 px-3 rounded-lg bg-[#C85A32] hover:bg-[#B34C26] active:scale-[0.98] text-white text-xs font-semibold shadow-xs flex items-center justify-center gap-1.5 transition-all"
+                      title="在新标签页中打开搜索"
+                    >
+                      <span>在 {activePlatform.shortName} 立即搜购</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
 
-                <button
-                  type="button"
-                  onClick={() => handleCopySearchText(activeKeyword, activeKeyword)}
-                  className="w-full py-1.5 px-3 rounded-lg border border-[#EADBCE] bg-[#FAF7F2] hover:bg-[#F3ECE4] text-[#5A5248] text-xs font-medium flex items-center justify-center gap-1.5 transition-colors"
-                >
-                  <Copy className="w-3.5 h-3.5" />
-                  <span>复制关键词「{activeKeyword}」</span>
-                </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleCopySearchText(targetSearchUrl, '电商搜索链接')}
+                        className="flex-1 py-1.5 px-2 rounded-lg border border-[#EADBCE] bg-[#FAF7F2] hover:bg-[#F3ECE4] text-[#5A5248] text-xs font-medium flex items-center justify-center gap-1 transition-colors"
+                      >
+                        <Copy className="w-3 h-3" />
+                        <span>复制链接</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleDownloadQrImage}
+                        className="py-1.5 px-2 rounded-lg border border-[#EADBCE] bg-[#FAF7F2] hover:bg-[#F3ECE4] text-[#5A5248] text-xs font-medium flex items-center justify-center gap-1 transition-colors"
+                        title="保存二维码图片"
+                      >
+                        <QrCode className="w-3 h-3" />
+                        <span>存图</span>
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleCopySearchText(formattedChecklistText, '食材备料清单文本')}
+                      className="w-full py-2 px-3 rounded-lg bg-[#5F7A4D] hover:bg-[#4E663F] text-white text-xs font-semibold shadow-xs flex items-center justify-center gap-1.5 transition-all"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>复制清单纯文本 (粘贴至备忘录)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleDownloadQrImage}
+                      className="w-full py-1.5 px-3 rounded-lg border border-[#EADBCE] bg-[#FAF7F2] hover:bg-[#F3ECE4] text-[#5A5248] text-xs font-medium flex items-center justify-center gap-1.5 transition-colors"
+                    >
+                      <QrCode className="w-3.5 h-3.5" />
+                      <span>保存清单二维码图片</span>
+                    </button>
+                  </>
+                )}
               </div>
             </div>
 
@@ -234,19 +397,65 @@ export const QuickPurchaseModal: React.FC<QuickPurchaseModalProps> = ({
             <div className="bg-[#FFFDF9] border border-[#EADBCE] rounded-xl p-3.5 text-xs text-[#7A7268] space-y-1.5">
               <div className="font-semibold text-[#2C2723] flex items-center gap-1.5">
                 <Smartphone className="w-3.5 h-3.5 text-[#C85A32]" />
-                <span>采购小贴士：</span>
+                <span>选购小贴士：</span>
               </div>
               <p className="leading-relaxed text-[11px]">
-                · 点击右侧任意食材，左侧二维码将即时切换为该单品的搜索直链；
+                · <strong>完整清单打包模式</strong>：系统已自动遍历当前所有食材生成综合检索词，点击直达京东/淘宝批量选购；
               </p>
               <p className="leading-relaxed text-[11px]">
-                · 支持一键打包复制全部待购食材，快速粘贴至生鲜平台批量加购。
+                · <strong>清单扫码带走模式</strong>：微信扫码直接显示结构化备料单，出门买菜省心不漏买。
               </p>
             </div>
           </div>
 
           {/* Right Column: Ingredients Selector List (7 cols) */}
           <div className="md:col-span-7 flex flex-col gap-3">
+            
+            {/* Complete Bundle Hero Card */}
+            <div 
+              onClick={() => {
+                setSearchScope('bundle');
+                setActiveIngredientName(null);
+                setQrContentType('search');
+              }}
+              className={`p-3.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                searchScope === 'bundle' && qrContentType === 'search'
+                  ? 'bg-gradient-to-r from-orange-50 to-amber-50/60 border-[#C85A32] ring-2 ring-[#C85A32]/20 shadow-xs'
+                  : 'bg-white border-[#EADBCE] hover:border-[#C85A32]/50 hover:bg-[#FAF7F2]'
+              }`}
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-8 h-8 rounded-lg bg-[#C85A32] text-white flex items-center justify-center text-sm font-bold shrink-0 shadow-2xs">
+                  🌟
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <strong className="text-sm text-[#2C2723]">
+                      完整食材清单一键打包搜购
+                    </strong>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#C85A32] text-white font-medium">
+                      推荐
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#7A7268] truncate mt-0.5">
+                    已遍历当前用料：<span className="font-mono text-[#C85A32]">{bundleKeyword || '全部食材'}</span>
+                  </p>
+                </div>
+              </div>
+
+              <a
+                href={activePlatform.getSearchUrl(bundleKeyword || '生鲜食材')}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="px-3 py-1.5 rounded-lg bg-[#C85A32] hover:bg-[#B34C26] text-white text-xs font-semibold shrink-0 flex items-center gap-1 shadow-2xs transition-colors"
+                title={`在 ${activePlatform.shortName} 中一次性搜索全部食材`}
+              >
+                <span>直达搜购</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+
             {/* Filter and Batch Copy Header */}
             <div className="flex flex-wrap items-center justify-between gap-2 pb-1">
               <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-[#EADBCE] text-xs">
@@ -272,18 +481,29 @@ export const QuickPurchaseModal: React.FC<QuickPurchaseModalProps> = ({
                 </button>
               </div>
 
-              <button
-                onClick={handleCopyAllMissingBundle}
-                className="inline-flex items-center gap-1 px-3 py-1 rounded-md bg-white border border-[#EADBCE] hover:border-[#C85A32] text-xs text-[#C85A32] font-semibold transition-colors shadow-2xs"
-                title="将所有待采购食材名称打包复制"
-              >
-                <Copy className="w-3.5 h-3.5" />
-                <span>打包复制待购清单</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setQrContentType('checklist')}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-white border border-[#EADBCE] hover:border-[#5F7A4D] text-xs text-[#5F7A4D] font-semibold transition-colors shadow-2xs"
+                  title="生成清单扫码带走二维码"
+                >
+                  <QrCode className="w-3.5 h-3.5" />
+                  <span>扫码带走</span>
+                </button>
+
+                <button
+                  onClick={handleCopyAllMissingBundle}
+                  className="inline-flex items-center gap-1 px-3 py-1 rounded-md bg-white border border-[#EADBCE] hover:border-[#C85A32] text-xs text-[#C85A32] font-semibold transition-colors shadow-2xs"
+                  title="将所有待采购食材名称打包复制"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>打包复制</span>
+                </button>
+              </div>
             </div>
 
             {/* List of Ingredients */}
-            <div className="space-y-2 max-h-[460px] overflow-y-auto pr-1">
+            <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
               {displayItems.length === 0 ? (
                 <div className="bg-white p-8 rounded-xl border border-dashed border-[#EADBCE] text-center text-xs text-[#9A9085]">
                   🎉 太棒了！当前清单中的食材已全部标记备齐！
@@ -296,13 +516,17 @@ export const QuickPurchaseModal: React.FC<QuickPurchaseModalProps> = ({
                 </div>
               ) : (
                 displayItems.map((ing) => {
-                  const isCurrentActive = activeKeyword === ing.name;
+                  const isCurrentActive = searchScope === 'single' && activeIngredientName === ing.name;
                   const itemSearchUrl = activePlatform.getSearchUrl(ing.name);
 
                   return (
                     <div
                       key={ing.id}
-                      onClick={() => setActiveIngredientName(ing.name)}
+                      onClick={() => {
+                        setSearchScope('single');
+                        setActiveIngredientName(ing.name);
+                        setQrContentType('search');
+                      }}
                       className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
                         isCurrentActive
                           ? 'bg-orange-50/70 border-[#C85A32] ring-1 ring-[#C85A32]/40 shadow-xs'
@@ -344,7 +568,11 @@ export const QuickPurchaseModal: React.FC<QuickPurchaseModalProps> = ({
 
                         <button
                           type="button"
-                          onClick={() => setActiveIngredientName(ing.name)}
+                          onClick={() => {
+                            setSearchScope('single');
+                            setActiveIngredientName(ing.name);
+                            setQrContentType('search');
+                          }}
                           className={`p-1.5 rounded-md border text-xs transition-colors ${
                             isCurrentActive
                               ? 'bg-[#C85A32] text-white border-[#C85A32]'

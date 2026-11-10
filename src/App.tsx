@@ -31,6 +31,10 @@ import { AuthModal } from './components/AuthModal';
 import { UserProfileModal } from './components/UserProfileModal';
 import { CalendarJournalView } from './components/CalendarJournalView';
 import { CategoryManagerModal } from './components/CategoryManagerModal';
+import { ComplianceModal } from './components/ComplianceModal';
+import { MultiPlatformGuideModal } from './components/MultiPlatformGuideModal';
+import { AppShareModal } from './components/AppShareModal';
+import { FooterCompliance } from './components/FooterCompliance';
 import { FuzzySearchBar } from './components/FuzzySearchBar';
 import { fuzzyFilterRecipes } from './utils/fuzzySearch';
 import { getMergedTaxonomy } from './utils/taxonomyStorage';
@@ -65,6 +69,12 @@ export default function App() {
   const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
   const [categoryManagerParent, setCategoryManagerParent] = useState<string>('烘焙甜点');
   const [taxonomyRevision, setTaxonomyRevision] = useState(0);
+
+  // Compliance & Multi-Platform Guide Modals
+  const [isComplianceModalOpen, setIsComplianceModalOpen] = useState(false);
+  const [complianceTab, setComplianceTab] = useState<'privacy' | 'terms' | 'permissions' | 'cancellation' | 'filings'>('privacy');
+  const [isMultiPlatformModalOpen, setIsMultiPlatformModalOpen] = useState(false);
+  const [isAppShareModalOpen, setIsAppShareModalOpen] = useState(false);
 
   // GitHub Auto-Sync Config
   const [githubConfig, setGithubConfig] = useState<GitHubConfig>(() => getGitHubConfig());
@@ -276,6 +286,48 @@ export default function App() {
     ];
   }, [activeTaxonomy]);
 
+  const handleOpenCompliance = (tab: 'privacy' | 'terms' | 'permissions' | 'cancellation' | 'filings' = 'privacy') => {
+    setComplianceTab(tab);
+    setIsComplianceModalOpen(true);
+  };
+
+  const handleExportAllData = () => {
+    try {
+      const exportPayload = {
+        exportDate: new Date().toISOString(),
+        platform: '食味手记 Culinary Journal',
+        user: currentUser,
+        recipes: recipes,
+        publicRecipes: publicRecipes,
+        schemaVersion: '1.2.0',
+        totalRecipes: recipes.length,
+      };
+      const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `culinary-journal-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export failed', err);
+    }
+  };
+
+  const handleDeleteAccount = () => {
+    try {
+      if (currentUser) {
+        const userKey = `culinary_recipes_${currentUser.uid}`;
+        localStorage.removeItem(userKey);
+        localStorage.removeItem('culinary_current_user');
+      }
+      setCurrentUser(null);
+      setRecipes(getUserRecipes(null));
+    } catch (e) {
+      console.error('Account deletion error', e);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#FAF7F2] text-[#2C2723] flex flex-col font-sans">
       {/* 1. Header (Top Bar Contract) */}
@@ -295,6 +347,7 @@ export default function App() {
         }}
         onOpenInstall={() => setIsInstallModalOpen(true)}
         onOpenGitHub={() => setIsGitHubModalOpen(true)}
+        onOpenShare={() => setIsAppShareModalOpen(true)}
       />
 
       {/* Realtime Notification Toast */}
@@ -683,6 +736,7 @@ export default function App() {
             setIsEditorOpen(false);
             setEditingRecipe(null);
           }}
+          onStartTimer={handleStartTimer}
         />
       )}
 
@@ -748,36 +802,42 @@ export default function App() {
         onTaxonomyChanged={() => setTaxonomyRevision((prev) => prev + 1)}
       />
 
-      {/* Quiet Footer */}
-      <footer className="border-t border-[#EADBCE] bg-[#FAF7F2] py-6 text-center text-xs text-[#9A9085]">
-        <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <span>食味手记 · 让每一次下厨都成为值得珍藏的手帐记忆</span>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setIsInstallModalOpen(true)}
-              className="hover:text-[#C85A32] transition-colors"
-            >
-              手机App安装
-            </button>
-            <span>·</span>
-            <button
-              onClick={() => setIsGitHubModalOpen(true)}
-              className="hover:text-[#C85A32] transition-colors"
-            >
-              GitHub 实时备份
-            </button>
-            <span>·</span>
-            <button
-              onClick={() => setActiveView('square')}
-              className="hover:text-[#C85A32] transition-colors"
-            >
-              食味广场
-            </button>
-            <span>·</span>
-            <span>每个账号手帐独立隔离</span>
-          </div>
-        </div>
-      </footer>
+      {/* Multi-End & Regulatory Compliant Footer */}
+      <FooterCompliance
+        onOpenCompliance={handleOpenCompliance}
+        onOpenMultiPlatform={() => setIsMultiPlatformModalOpen(true)}
+        onOpenShare={() => setIsAppShareModalOpen(true)}
+      />
+
+      {/* Compliance Center Modal (PIPL, Privacy, Terms, Data Takeout, MIIT Filings) */}
+      <ComplianceModal
+        isOpen={isComplianceModalOpen}
+        initialTab={complianceTab}
+        onClose={() => setIsComplianceModalOpen(false)}
+        currentUser={currentUser}
+        onExportAllData={handleExportAllData}
+        onDeleteAccount={handleDeleteAccount}
+      />
+
+      {/* Multi-Platform Guide Modal (iOS, Android, WeChat Mini Program, Web) */}
+      <MultiPlatformGuideModal
+        isOpen={isMultiPlatformModalOpen}
+        onClose={() => setIsMultiPlatformModalOpen(false)}
+        onOpenPWAInstall={() => {
+          setIsMultiPlatformModalOpen(false);
+          setIsInstallModalOpen(true);
+        }}
+        onOpenShare={() => {
+          setIsMultiPlatformModalOpen(false);
+          setIsAppShareModalOpen(true);
+        }}
+      />
+
+      {/* App WeChat / QR Code Share & Scrapbook Poster Modal */}
+      <AppShareModal
+        isOpen={isAppShareModalOpen}
+        onClose={() => setIsAppShareModalOpen(false)}
+      />
     </div>
   );
 }

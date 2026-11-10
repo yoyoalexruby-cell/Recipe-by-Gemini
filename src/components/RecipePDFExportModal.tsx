@@ -1,10 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { Recipe, Ingredient } from '../types/recipe';
-import { FoodArtFallback } from './IllustrationPresets';
 import { 
   Printer, Download, X, Check, Image as ImageIcon, Sparkles, 
   Clock, Flame, ChefHat, Users, Star, Heart, AlertTriangle, 
-  Tag, Calendar, Camera, BookOpen
+  Tag, Calendar, Camera, BookOpen, Layers, Feather, Stamp
 } from 'lucide-react';
 import { estimateRecipeCalories } from '../utils/nutritionCalculator';
 
@@ -15,18 +14,20 @@ interface RecipePDFExportModalProps {
   servings?: number;
 }
 
+export type JournalBorderStyle = 'vintage' | 'kraft' | 'botanical' | 'minimal';
+
 export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
   isOpen,
   onClose,
   recipe,
   servings = recipe.baseServings || 2
 }) => {
-  // Print options
+  // Border & Typesetting style choices
+  const [borderStyle, setBorderStyle] = useState<JournalBorderStyle>('vintage');
   const [includeStepPhotos, setIncludeStepPhotos] = useState(true);
   const [includeGallery, setIncludeGallery] = useState(true);
   const [includeReview, setIncludeReview] = useState(true);
   const [includeStamps, setIncludeStamps] = useState(true);
-  const [colorMode, setColorMode] = useState<'vintage' | 'minimal'>('vintage');
   const [density, setDensity] = useState<'standard' | 'compact'>('standard');
   const [isExportingImage, setIsExportingImage] = useState(false);
   const [exportSuccessMsg, setExportSuccessMsg] = useState<string | null>(null);
@@ -53,19 +54,24 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
 
   // Trigger print dialog
   const handlePrint = () => {
-    // Add temporary class to handle ink mode
-    if (colorMode === 'minimal') {
+    // Set active print style on document body for print isolation
+    document.body.classList.remove('print-vintage', 'print-kraft', 'print-botanical', 'print-minimal-ink');
+    if (borderStyle === 'minimal') {
       document.body.classList.add('print-minimal-ink');
+    } else if (borderStyle === 'kraft') {
+      document.body.classList.add('print-kraft');
+    } else if (borderStyle === 'botanical') {
+      document.body.classList.add('print-botanical');
     } else {
-      document.body.classList.remove('print-minimal-ink');
+      document.body.classList.add('print-vintage');
     }
 
     window.print();
 
     // Cleanup after print dialog
     setTimeout(() => {
-      document.body.classList.remove('print-minimal-ink');
-    }, 1000);
+      document.body.classList.remove('print-vintage', 'print-kraft', 'print-botanical', 'print-minimal-ink');
+    }, 1200);
   };
 
   // Export as high-res PNG long image using Canvas
@@ -76,23 +82,30 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      const width = 900;
-      // Estimate height dynamically based on content
-      const stepsHeight = recipe.steps.length * (includeStepPhotos ? 140 : 80);
-      const estimatedHeight = Math.max(1400, 850 + stepsHeight + (includeReview ? 320 : 0));
+      const width = 960;
+      const stepsHeight = recipe.steps.length * (includeStepPhotos ? 145 : 85);
+      const estimatedHeight = Math.max(1400, 880 + stepsHeight + (includeReview ? 340 : 0));
       
       canvas.width = width;
       canvas.height = estimatedHeight;
 
-      // 1. Background Cream Paper
-      ctx.fillStyle = colorMode === 'vintage' ? '#FAF7F2' : '#FFFFFF';
+      // 1. Background Paper
+      if (borderStyle === 'kraft') {
+        ctx.fillStyle = '#F5EFEB';
+      } else if (borderStyle === 'botanical') {
+        ctx.fillStyle = '#F8FAF7';
+      } else if (borderStyle === 'minimal') {
+        ctx.fillStyle = '#FFFFFF';
+      } else {
+        ctx.fillStyle = '#FAF7F2';
+      }
       ctx.fillRect(0, 0, width, estimatedHeight);
 
-      // Subtle Grid Dots for vintage mode
-      if (colorMode === 'vintage') {
-        ctx.fillStyle = '#EBE2D5';
-        for (let x = 20; x < width; x += 25) {
-          for (let y = 20; y < estimatedHeight; y += 25) {
+      // Subtle Grid Dots for vintage & kraft
+      if (borderStyle === 'vintage' || borderStyle === 'kraft') {
+        ctx.fillStyle = borderStyle === 'kraft' ? '#E5DCce' : '#EBE2D5';
+        for (let x = 24; x < width; x += 26) {
+          for (let y = 24; y < estimatedHeight; y += 26) {
             ctx.beginPath();
             ctx.arc(x, y, 1, 0, Math.PI * 2);
             ctx.fill();
@@ -100,164 +113,190 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
         }
       }
 
-      // Outer border
-      ctx.strokeStyle = colorMode === 'vintage' ? '#E2D3C0' : '#CCCCCC';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(20, 20, width - 40, estimatedHeight - 40);
+      // Outer Decorative Border
+      if (borderStyle === 'minimal') {
+        ctx.strokeStyle = '#1A1A1A';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(24, 24, width - 48, estimatedHeight - 48);
+        ctx.strokeStyle = '#CCCCCC';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(30, 30, width - 60, estimatedHeight - 60);
+      } else if (borderStyle === 'kraft') {
+        ctx.strokeStyle = '#BFA98F';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([8, 6]);
+        ctx.strokeRect(24, 24, width - 48, estimatedHeight - 48);
+        ctx.setLineDash([]);
+      } else if (borderStyle === 'botanical') {
+        ctx.strokeStyle = '#5F7A4D';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(24, 24, width - 48, estimatedHeight - 48);
+        ctx.strokeStyle = '#D1DCC8';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(30, 30, width - 60, estimatedHeight - 60);
+      } else {
+        // Classic vintage double border
+        ctx.strokeStyle = '#C85A32';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(24, 24, width - 48, estimatedHeight - 48);
+        ctx.strokeStyle = '#D6CBC0';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(32, 32, width - 64, estimatedHeight - 64);
+      }
 
-      // Header Banner
-      ctx.fillStyle = colorMode === 'vintage' ? '#C85A32' : '#333333';
-      ctx.fillRect(width / 2 - 120, 20, 240, 28);
+      // Header Banner Ribbon
+      ctx.fillStyle = borderStyle === 'botanical' ? '#5F7A4D' : borderStyle === 'minimal' ? '#333333' : '#C85A32';
+      ctx.fillRect(width / 2 - 140, 24, 280, 28);
       ctx.fillStyle = '#FFFFFF';
       ctx.font = 'bold 12px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('RECIPE JOURNAL · 手帐文档', width / 2, 38);
+      ctx.fillText(`RECIPE JOURNAL · #${recipe.id.slice(-6).toUpperCase()}`, width / 2, 42);
 
       // Recipe Title
       ctx.fillStyle = '#2C2723';
-      ctx.font = 'bold 28px "Noto Serif SC", serif';
+      ctx.font = 'bold 30px "Noto Serif SC", serif';
       ctx.textAlign = 'center';
-      ctx.fillText(recipe.title, width / 2, 85);
+      ctx.fillText(recipe.title, width / 2, 92);
 
       // Subtitle
       ctx.fillStyle = '#7A7268';
       ctx.font = 'italic 14px "Noto Serif SC", serif';
-      const sub = recipe.subtitle ? `“${recipe.subtitle}”` : '“人间烟火气，最抚凡人心”';
-      ctx.fillText(sub, width / 2, 115);
+      const sub = recipe.subtitle ? `“${recipe.subtitle}”` : '“每一道菜都是一封写给生活的情书”';
+      ctx.fillText(sub, width / 2, 122);
 
       // Meta Line
       ctx.font = '12px sans-serif';
       ctx.fillStyle = '#5A5248';
-      const metaText = `${recipe.category} · ${recipe.cuisine} · 备料${recipe.prepTimeMinutes}分 · 烹饪${recipe.cookTimeMinutes}分 · ${servings}人份 · 热量约${perServingCalories}kcal/份 · 难度${'★'.repeat(recipe.difficulty || 3)}`;
-      ctx.fillText(metaText, width / 2, 145);
+      const metaText = `${recipe.category}${recipe.subCategory ? ` / ${recipe.subCategory}` : ''} · ${recipe.cuisine} · 备料${recipe.prepTimeMinutes}分 · 烹饪${recipe.cookTimeMinutes}分 · ${servings}人份 · 热量约${perServingCalories}kcal/份 · 难度${'★'.repeat(recipe.difficulty || 3)}`;
+      ctx.fillText(metaText, width / 2, 152);
 
-      let currentY = 175;
+      let currentY = 180;
 
       // Draw Ingredients Box
-      ctx.fillStyle = colorMode === 'vintage' ? '#F4EFE6' : '#FAFAFA';
-      ctx.fillRect(40, currentY, width - 80, 180);
+      ctx.fillStyle = borderStyle === 'minimal' ? '#FAFAFA' : '#F6F0E6';
+      ctx.fillRect(48, currentY, width - 96, 185);
       ctx.strokeStyle = '#E2D3C0';
-      ctx.strokeRect(40, currentY, width - 80, 180);
+      ctx.lineWidth = 1;
+      ctx.strokeRect(48, currentY, width - 96, 185);
 
-      ctx.fillStyle = '#C85A32';
+      ctx.fillStyle = borderStyle === 'botanical' ? '#5F7A4D' : '#C85A32';
       ctx.font = 'bold 14px sans-serif';
       ctx.textAlign = 'left';
-      ctx.fillText(`🛒 食材清单 (${servings}人份)`, 55, currentY + 25);
+      ctx.fillText(`🛒 食材用量清单 (${servings}人份)`, 64, currentY + 26);
 
       ctx.fillStyle = '#2C2723';
       ctx.font = '12px sans-serif';
-      let ingX = 55;
-      let ingY = currentY + 50;
-      recipe.ingredients.slice(0, 18).forEach((ing, index) => {
-        const text = `• ${ing.name}: ${formatScaledAmount(ing)}${ing.unit}`;
+      let ingX = 64;
+      let ingY = currentY + 52;
+      recipe.ingredients.slice(0, 18).forEach((ing) => {
+        const text = `${ing.name} …… ${formatScaledAmount(ing)}${ing.unit}`;
         ctx.fillText(text, ingX, ingY);
-        ingY += 22;
-        if (ingY > currentY + 160 && ingX === 55) {
-          ingY = currentY + 50;
-          ingX = 330;
-        } else if (ingY > currentY + 160 && ingX === 330) {
-          ingY = currentY + 50;
-          ingX = 600;
+        ingY += 23;
+        if (ingY > currentY + 165 && ingX === 64) {
+          ingY = currentY + 52;
+          ingX = 360;
+        } else if (ingY > currentY + 165 && ingX === 360) {
+          ingY = currentY + 52;
+          ingX = 660;
         }
       });
 
-      currentY += 205;
+      currentY += 215;
 
       // Steps Title
-      ctx.fillStyle = '#C85A32';
+      ctx.fillStyle = borderStyle === 'botanical' ? '#5F7A4D' : '#C85A32';
       ctx.font = 'bold 16px sans-serif';
-      ctx.fillText('🍳 烹饪步骤与时序', 40, currentY);
-      currentY += 25;
+      ctx.fillText('🍳 烹饪步骤与火候时序', 48, currentY);
+      currentY += 26;
 
       // Steps Content
       recipe.steps.forEach((step, idx) => {
-        ctx.fillStyle = '#C85A32';
+        ctx.fillStyle = borderStyle === 'botanical' ? '#5F7A4D' : '#C85A32';
         ctx.beginPath();
-        ctx.arc(52, currentY + 8, 10, 0, Math.PI * 2);
+        ctx.arc(60, currentY + 8, 10, 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = '#FFFFFF';
         ctx.font = 'bold 10px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText(`${idx + 1}`, 52, currentY + 12);
+        ctx.fillText(`${idx + 1}`, 60, currentY + 12);
 
         ctx.textAlign = 'left';
         ctx.fillStyle = '#2C2723';
         ctx.font = 'bold 14px sans-serif';
-        ctx.fillText(step.title, 72, currentY + 12);
+        ctx.fillText(step.title, 82, currentY + 12);
 
         if (step.heat || step.durationMinutes) {
           ctx.fillStyle = '#7A7268';
           ctx.font = '11px sans-serif';
-          ctx.fillText(`(${step.heat || ''} ${step.durationMinutes ? `${step.durationMinutes}分钟` : ''})`, 72 + ctx.measureText(step.title).width + 10, currentY + 12);
+          ctx.fillText(`(${step.heat || ''} ${step.durationMinutes ? `${step.durationMinutes}分钟` : ''})`, 82 + ctx.measureText(step.title).width + 12, currentY + 12);
         }
 
         ctx.fillStyle = '#4A423B';
         ctx.font = '12px sans-serif';
         const words = step.description;
-        // Simple wrap
         let line = '';
-        let lineY = currentY + 32;
+        let lineY = currentY + 34;
         for (let i = 0; i < words.length; i++) {
           line += words[i];
-          if (line.length >= 52 || i === words.length - 1) {
-            ctx.fillText(line, 72, lineY);
+          if (line.length >= 56 || i === words.length - 1) {
+            ctx.fillText(line, 82, lineY);
             line = '';
-            lineY += 18;
+            lineY += 19;
           }
         }
 
         if (step.tip) {
           ctx.fillStyle = '#C08A3E';
           ctx.font = 'italic 11px sans-serif';
-          ctx.fillText(`💡 避坑要点: ${step.tip.slice(0, 60)}`, 72, lineY);
-          lineY += 20;
+          ctx.fillText(`💡 避坑要点: ${step.tip.slice(0, 65)}`, 82, lineY);
+          lineY += 22;
         }
 
-        currentY = lineY + 15;
+        currentY = lineY + 14;
       });
 
       // Reflection Box if enabled
       if (includeReview && recipe.review?.tastingNotes) {
-        ctx.fillStyle = colorMode === 'vintage' ? '#FFFDF9' : '#FAFAFA';
-        ctx.fillRect(40, currentY, width - 80, 110);
+        ctx.fillStyle = borderStyle === 'minimal' ? '#FAFAFA' : '#FFFDF9';
+        ctx.fillRect(48, currentY, width - 96, 115);
         ctx.strokeStyle = '#E2D3C0';
-        ctx.strokeRect(40, currentY, width - 80, 110);
+        ctx.strokeRect(48, currentY, width - 96, 115);
 
-        ctx.fillStyle = '#C85A32';
+        ctx.fillStyle = borderStyle === 'botanical' ? '#5F7A4D' : '#C85A32';
         ctx.font = 'bold 13px sans-serif';
-        ctx.fillText('✨ 烹饪心得与手帐复盘', 55, currentY + 24);
+        ctx.fillText('✨ 烹饪心得与手帐复盘', 64, currentY + 26);
 
         ctx.fillStyle = '#5A5248';
         ctx.font = '12px sans-serif';
-        ctx.fillText(recipe.review.tastingNotes.slice(0, 100), 55, currentY + 48);
+        ctx.fillText(recipe.review.tastingNotes.slice(0, 110), 64, currentY + 52);
 
         if (recipe.review.pitfallsAndLessons) {
           ctx.fillStyle = '#C85A32';
           ctx.font = '11px sans-serif';
-          ctx.fillText(`避坑总结: ${recipe.review.pitfallsAndLessons.slice(0, 80)}`, 55, currentY + 74);
+          ctx.fillText(`避坑经验: ${recipe.review.pitfallsAndLessons.slice(0, 90)}`, 64, currentY + 80);
         }
 
-        currentY += 130;
+        currentY += 135;
       }
 
-      // Watermark
+      // Watermark Colophon
       ctx.fillStyle = '#9A9085';
       ctx.font = '11px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('—— 来自 食味手记 · 私房烹饪手帐 ——', width / 2, currentY + 15);
+      ctx.fillText('—— 食味手记 · 私房烹饪手帐 —— 记录每一次与美食相遇的幸福时光', width / 2, currentY + 16);
 
       // Trigger download
       const dataUrl = canvas.toDataURL('image/png');
       const link = document.createElement('a');
-      link.download = `食味手记_${recipe.title}_手帐卡.png`;
+      link.download = `食味手记_${recipe.title}_打印版手帐.png`;
       link.href = dataUrl;
       link.click();
 
-      setExportSuccessMsg('已成功生成高清手帐长图！');
-      setTimeout(() => setExportSuccessMsg(null), 3000);
+      setExportSuccessMsg('已成功生成精美手帐长图！');
+      setTimeout(() => setExportSuccessMsg(null), 3500);
     } catch (err) {
       console.error('Export error:', err);
-      setExportSuccessMsg('⚠️ 导出长图遇到问题，推荐直接点击「立即打印 / 另存为 PDF」');
+      setExportSuccessMsg('⚠️ 生成长图遇到问题，推荐直接点击「立即打印 / 另存为 PDF」');
       setTimeout(() => setExportSuccessMsg(null), 4000);
     } finally {
       setIsExportingImage(false);
@@ -265,12 +304,12 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-xs overflow-y-auto no-print">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/65 backdrop-blur-xs overflow-y-auto no-print">
       <div 
-        className="bg-white border border-[#EADBCE] rounded-2xl shadow-2xl w-full max-w-5xl my-4 flex flex-col max-h-[92vh] overflow-hidden animate-fade-in"
+        className="bg-white border border-[#EADBCE] rounded-2xl shadow-2xl w-full max-w-6xl my-4 flex flex-col max-h-[94vh] overflow-hidden animate-fade-in"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Modal Header */}
+        {/* Modal Top Bar */}
         <div className="px-5 py-4 border-b border-[#EADBCE] bg-[#FAF7F2] flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-[#C85A32]/10 border border-[#C85A32]/30 flex items-center justify-center text-[#C85A32]">
@@ -278,13 +317,13 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
             </div>
             <div>
               <h2 className="text-base sm:text-lg font-bold text-[#2C2723] font-journal-title flex items-center gap-2">
-                <span>导出精美 PDF 烹饪手帐</span>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-[#C85A32]/10 text-[#C85A32] font-sans font-medium">
-                  A4 排版优化
+                <span>生成打印版手帐</span>
+                <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#C85A32]/10 text-[#C85A32] font-sans font-medium">
+                  A4 边框手帐排版
                 </span>
               </h2>
               <p className="text-xs text-[#7A7268]">
-                《{recipe.title}》· 包含封面、食材明细、步骤实拍图及避坑手记
+                《{recipe.title}》· 预览精致边框装饰与排版效果，可直接连接打印机或另存为高清矢量 PDF
               </p>
             </div>
           </div>
@@ -298,9 +337,72 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
           </button>
         </div>
 
-        {/* Options & Action Control Bar */}
+        {/* Options & Decoration Toolbar */}
         <div className="px-5 py-3.5 bg-white border-b border-[#EADBCE] flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
-          {/* Customization checkboxes */}
+          
+          {/* 1. Border Style Selector */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] font-semibold text-[#7A7268] flex items-center gap-1">
+              <Layers className="w-3.5 h-3.5 text-[#C85A32]" />
+              <span>边框装帧：</span>
+            </span>
+
+            <div className="flex items-center gap-1 bg-[#FAF7F2] p-0.5 rounded-lg border border-[#EADBCE]">
+              <button
+                type="button"
+                onClick={() => setBorderStyle('vintage')}
+                className={`px-2.5 py-1 rounded text-xs transition-all flex items-center gap-1 ${
+                  borderStyle === 'vintage'
+                    ? 'bg-white text-[#C85A32] shadow-2xs font-bold'
+                    : 'text-[#7A7268] hover:text-[#2C2723]'
+                }`}
+                title="古典复古双线边框 + 转角雕花与胶带"
+              >
+                <span>📜 古典双线</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setBorderStyle('kraft')}
+                className={`px-2.5 py-1 rounded text-xs transition-all flex items-center gap-1 ${
+                  borderStyle === 'kraft'
+                    ? 'bg-white text-[#9E6438] shadow-2xs font-bold'
+                    : 'text-[#7A7268] hover:text-[#2C2723]'
+                }`}
+                title="牛皮纸色调 + 火漆印章与邮政缝线边框"
+              >
+                <span>🏷️ 牛皮纸火漆</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setBorderStyle('botanical')}
+                className={`px-2.5 py-1 rounded text-xs transition-all flex items-center gap-1 ${
+                  borderStyle === 'botanical'
+                    ? 'bg-white text-[#5F7A4D] shadow-2xs font-bold'
+                    : 'text-[#7A7268] hover:text-[#2C2723]'
+                }`}
+                title="清新草木绿色调 + 手绘植物枝叶边角"
+              >
+                <span>🌿 清新草木</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setBorderStyle('minimal')}
+                className={`px-2.5 py-1 rounded text-xs transition-all flex items-center gap-1 ${
+                  borderStyle === 'minimal'
+                    ? 'bg-white text-[#1A1A1A] shadow-2xs font-bold'
+                    : 'text-[#7A7268] hover:text-[#2C2723]'
+                }`}
+                title="黑白高对比度极简双线，家庭黑白打印最省墨"
+              >
+                <span>🖨️ 极简省墨</span>
+              </button>
+            </div>
+          </div>
+
+          {/* 2. Content inclusion checkboxes */}
           <div className="flex flex-wrap items-center gap-3 sm:gap-4">
             <label className="flex items-center gap-1.5 cursor-pointer text-[#2C2723] hover:text-[#C85A32] select-none">
               <input
@@ -309,7 +411,7 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
                 onChange={(e) => setIncludeStepPhotos(e.target.checked)}
                 className="rounded border-[#D6CBC0] text-[#C85A32] focus:ring-[#C85A32]"
               />
-              <span>步骤实拍图</span>
+              <span>步骤实拍</span>
             </label>
 
             <label className="flex items-center gap-1.5 cursor-pointer text-[#2C2723] hover:text-[#C85A32] select-none">
@@ -319,7 +421,7 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
                 onChange={(e) => setIncludeGallery(e.target.checked)}
                 className="rounded border-[#D6CBC0] text-[#C85A32] focus:ring-[#C85A32]"
               />
-              <span>实拍相册花絮</span>
+              <span>相册花絮</span>
             </label>
 
             <label className="flex items-center gap-1.5 cursor-pointer text-[#2C2723] hover:text-[#C85A32] select-none">
@@ -329,7 +431,7 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
                 onChange={(e) => setIncludeReview(e.target.checked)}
                 className="rounded border-[#D6CBC0] text-[#C85A32] focus:ring-[#C85A32]"
               />
-              <span>心得复盘与避坑</span>
+              <span>复盘避坑</span>
             </label>
 
             <label className="flex items-center gap-1.5 cursor-pointer text-[#2C2723] hover:text-[#C85A32] select-none">
@@ -339,77 +441,55 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
                 onChange={(e) => setIncludeStamps(e.target.checked)}
                 className="rounded border-[#D6CBC0] text-[#C85A32] focus:ring-[#C85A32]"
               />
-              <span>印章与评分</span>
+              <span>火漆印章</span>
             </label>
-
-            {/* Ink Style Switcher */}
-            <div className="flex items-center gap-1 bg-[#FAF7F2] p-0.5 rounded-md border border-[#EADBCE]">
-              <button
-                onClick={() => setColorMode('vintage')}
-                className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                  colorMode === 'vintage'
-                    ? 'bg-white text-[#C85A32] shadow-2xs font-semibold'
-                    : 'text-[#7A7268] hover:text-[#2C2723]'
-                }`}
-                title="手帐经典米黄色纸张，原汁原味"
-              >
-                🌸 手帐全彩
-              </button>
-              <button
-                onClick={() => setColorMode('minimal')}
-                className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                  colorMode === 'minimal'
-                    ? 'bg-white text-[#2C2723] shadow-2xs font-semibold'
-                    : 'text-[#7A7268] hover:text-[#2C2723]'
-                }`}
-                title="纯白底色省墨模式，高对比度黑白打印"
-              >
-                🖨️ 省墨极简
-              </button>
-            </div>
 
             {/* Density Switcher */}
             <div className="flex items-center gap-1 bg-[#FAF7F2] p-0.5 rounded-md border border-[#EADBCE]">
               <button
+                type="button"
                 onClick={() => setDensity('standard')}
-                className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                className={`px-2 py-1 rounded text-xs transition-colors ${
                   density === 'standard'
                     ? 'bg-white text-[#C85A32] shadow-2xs font-semibold'
                     : 'text-[#7A7268] hover:text-[#2C2723]'
                 }`}
               >
-                标准舒适
+                标准舒朗
               </button>
               <button
+                type="button"
                 onClick={() => setDensity('compact')}
-                className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                className={`px-2 py-1 rounded text-xs transition-colors ${
                   density === 'compact'
                     ? 'bg-white text-[#C85A32] shadow-2xs font-semibold'
                     : 'text-[#7A7268] hover:text-[#2C2723]'
                 }`}
-                title="紧凑字号与间距，尽可能减少打印页数"
+                title="紧凑字号与间距，尽可能单页排布"
               >
                 紧凑单页
               </button>
             </div>
           </div>
 
-          {/* Action triggers */}
+          {/* 3. Action Buttons */}
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={handleExportImage}
               disabled={isExportingImage}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-[#EADBCE] bg-[#FAF7F2] hover:bg-[#F3ECE4] text-[#5A5248] font-medium transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#EADBCE] bg-[#FAF7F2] hover:bg-[#F3ECE4] text-[#5A5248] font-medium transition-colors"
               title="生成并下载长图（手机离线查看/微信分享）"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>{isExportingImage ? '生成中...' : '下载长图 (PNG)'}</span>
+              <span>{isExportingImage ? '生成中...' : '下载手帐长图'}</span>
             </button>
 
             <button
+              type="button"
               onClick={handlePrint}
-              className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-md bg-[#C85A32] hover:bg-[#B34C26] active:scale-[0.98] text-white font-semibold shadow-xs transition-all"
-              title="调用系统打印，可选择「另存为 PDF」或连接打印机"
+              className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-[#C85A32] hover:bg-[#B34C26] active:scale-[0.98] text-white font-bold shadow-xs transition-all"
+              title="调用系统打印，目标打印机选择「另存为 PDF」即可导出"
             >
               <Printer className="w-4 h-4" />
               <span>立即打印 / 另存为 PDF</span>
@@ -434,19 +514,132 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
           <div
             id="recipe-print-document"
             ref={printSheetRef}
-            className={`w-full max-w-[210mm] min-h-[297mm] transition-all duration-200 ${
-              colorMode === 'vintage' 
-                ? 'bg-[#FAF7F2] text-[#2C2723] border border-[#E2D3C0]' 
-                : 'bg-white text-[#1A1A1A] border border-gray-300'
-            } p-6 sm:p-10 shadow-lg relative print-page ${
+            className={`w-full max-w-[210mm] min-h-[297mm] transition-all duration-200 shadow-xl relative print-page ${
               density === 'compact' ? 'text-xs' : 'text-sm'
-            }`}
+            } ${
+              borderStyle === 'kraft'
+                ? 'bg-[#F5EFEB] text-[#261910]'
+                : borderStyle === 'botanical'
+                ? 'bg-[#F8FAF7] text-[#1E281C]'
+                : borderStyle === 'minimal'
+                ? 'bg-white text-[#1A1A1A]'
+                : 'bg-[#FAF7F2] text-[#2C2723]'
+            } p-8 sm:p-12`}
             style={{ boxSizing: 'border-box' }}
           >
-            {/* Washi Tape Header (Decorative) */}
-            <div className="flex items-center justify-between border-b-2 border-[#C85A32]/70 pb-4 mb-6">
+            {/* ================= BORDER DECORATION OVERLAYS ================= */}
+
+            {/* 1. Vintage Double Border & Filigree Corner Ornaments */}
+            {borderStyle === 'vintage' && (
+              <>
+                {/* Outer frame border */}
+                <div className="absolute inset-3 sm:inset-4 border-2 border-[#C85A32]/65 pointer-events-none rounded-xs" />
+                {/* Inset hairline frame */}
+                <div className="absolute inset-5 sm:inset-6 border border-[#D6CBC0] pointer-events-none rounded-xs" />
+
+                {/* 4 Corner Vintage Filigree SVGs */}
+                <div className="absolute top-4 left-4 pointer-events-none text-[#C85A32]/70">
+                  <svg className="w-7 h-7" viewBox="0 0 36 36" fill="none">
+                    <path d="M3 33 V10 C3 6.13 6.13 3 10 3 H33" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                    <path d="M8 33 V13 C8 10.24 10.24 8 13 8 H33" stroke="currentColor" strokeWidth="1" strokeDasharray="2 2"/>
+                    <circle cx="10" cy="10" r="2.5" fill="currentColor"/>
+                  </svg>
+                </div>
+                <div className="absolute top-4 right-4 pointer-events-none text-[#C85A32]/70">
+                  <svg className="w-7 h-7" viewBox="0 0 36 36" fill="none">
+                    <path d="M33 33 V10 C33 6.13 29.87 3 26 3 H3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                    <path d="M28 33 V13 C28 10.24 25.76 8 23 8 H3" stroke="currentColor" strokeWidth="1" strokeDasharray="2 2"/>
+                    <circle cx="26" cy="10" r="2.5" fill="currentColor"/>
+                  </svg>
+                </div>
+                <div className="absolute bottom-4 left-4 pointer-events-none text-[#C85A32]/70">
+                  <svg className="w-7 h-7" viewBox="0 0 36 36" fill="none">
+                    <path d="M3 3 V26 C3 29.87 6.13 33 10 33 H33" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                    <path d="M8 3 V23 C8 25.76 10.24 28 13 28 H33" stroke="currentColor" strokeWidth="1" strokeDasharray="2 2"/>
+                    <circle cx="10" cy="26" r="2.5" fill="currentColor"/>
+                  </svg>
+                </div>
+                <div className="absolute bottom-4 right-4 pointer-events-none text-[#C85A32]/70">
+                  <svg className="w-7 h-7" viewBox="0 0 36 36" fill="none">
+                    <path d="M33 3 V26 C33 29.87 29.87 33 26 33 H3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                    <path d="M28 3 V23 C28 25.76 25.76 28 23 28 H3" stroke="currentColor" strokeWidth="1" strokeDasharray="2 2"/>
+                    <circle cx="26" cy="26" r="2.5" fill="currentColor"/>
+                  </svg>
+                </div>
+              </>
+            )}
+
+            {/* 2. Kraft Paper Postal Stitched Border */}
+            {borderStyle === 'kraft' && (
+              <>
+                <div className="absolute inset-3 sm:inset-4 border-2 border-dashed border-[#BFA98F] pointer-events-none" />
+                <div className="absolute inset-5 sm:inset-6 border border-[#D5C2A5]/60 pointer-events-none" />
+
+                {/* Postal Cancellation Stamp Mark in Corner */}
+                <div className="absolute top-5 right-7 pointer-events-none rotate-[-6deg] opacity-75">
+                  <div className="border-2 border-[#A88B70] rounded-full px-2.5 py-1 text-[#A88B70] text-center font-mono text-[9px] uppercase tracking-wider">
+                    <div>AIR MAIL · CULINARY</div>
+                    <div className="border-t border-b border-[#A88B70] my-0.5 py-0.5 font-bold tracking-widest">
+                      RECIPE POST
+                    </div>
+                    <div>★ VERIFIED ★</div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* 3. Botanical Herb Frame */}
+            {borderStyle === 'botanical' && (
+              <>
+                <div className="absolute inset-3 sm:inset-4 border-2 border-[#5F7A4D]/60 pointer-events-none" />
+                <div className="absolute inset-5 sm:inset-6 border border-[#D1DCC8] pointer-events-none" />
+
+                {/* 4 Botanical Leaves Corner SVGs */}
+                <div className="absolute top-4 left-4 pointer-events-none text-[#5F7A4D]/80">
+                  <svg className="w-8 h-8" viewBox="0 0 36 36" fill="none">
+                    <path d="M4 32 C4 18 14 8 32 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                    <path d="M11 21 C7 18 7 14 11 12 C14 14 14 18 11 21 Z" fill="currentColor" opacity="0.6"/>
+                    <path d="M20 12 C16 9 16 5 20 3 C24 5 24 9 20 12 Z" fill="currentColor" opacity="0.6"/>
+                  </svg>
+                </div>
+                <div className="absolute top-4 right-4 pointer-events-none text-[#5F7A4D]/80">
+                  <svg className="w-8 h-8 -scale-x-100" viewBox="0 0 36 36" fill="none">
+                    <path d="M4 32 C4 18 14 8 32 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                    <path d="M11 21 C7 18 7 14 11 12 C14 14 14 18 11 21 Z" fill="currentColor" opacity="0.6"/>
+                    <path d="M20 12 C16 9 16 5 20 3 C24 5 24 9 20 12 Z" fill="currentColor" opacity="0.6"/>
+                  </svg>
+                </div>
+                <div className="absolute bottom-4 left-4 pointer-events-none text-[#5F7A4D]/80">
+                  <svg className="w-8 h-8 -scale-y-100" viewBox="0 0 36 36" fill="none">
+                    <path d="M4 32 C4 18 14 8 32 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                    <path d="M11 21 C7 18 7 14 11 12 C14 14 14 18 11 21 Z" fill="currentColor" opacity="0.6"/>
+                    <path d="M20 12 C16 9 16 5 20 3 C24 5 24 9 20 12 Z" fill="currentColor" opacity="0.6"/>
+                  </svg>
+                </div>
+                <div className="absolute bottom-4 right-4 pointer-events-none text-[#5F7A4D]/80">
+                  <svg className="w-8 h-8 -scale-x-100 -scale-y-100" viewBox="0 0 36 36" fill="none">
+                    <path d="M4 32 C4 18 14 8 32 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                    <path d="M11 21 C7 18 7 14 11 12 C14 14 14 18 11 21 Z" fill="currentColor" opacity="0.6"/>
+                    <path d="M20 12 C16 9 16 5 20 3 C24 5 24 9 20 12 Z" fill="currentColor" opacity="0.6"/>
+                  </svg>
+                </div>
+              </>
+            )}
+
+            {/* 4. Minimal Ink Double Border */}
+            {borderStyle === 'minimal' && (
+              <>
+                <div className="absolute inset-3 sm:inset-4 border-2 border-neutral-900 pointer-events-none" />
+                <div className="absolute inset-5 sm:inset-6 border border-neutral-300 pointer-events-none" />
+              </>
+            )}
+
+            {/* ================= HEADER SECTION ================= */}
+            <div className="flex items-center justify-between border-b-2 border-[#C85A32]/70 pb-3 mb-5">
               <div className="flex items-center gap-2">
-                <span className="px-3 py-1 bg-[#C85A32] text-white text-[11px] font-mono font-bold uppercase tracking-wider rounded-xs">
+                <span className={`px-2.5 py-0.5 text-white text-[10px] font-mono font-bold uppercase tracking-wider rounded-xs ${
+                  borderStyle === 'botanical' ? 'bg-[#5F7A4D]' : borderStyle === 'minimal' ? 'bg-neutral-900' : 'bg-[#C85A32]'
+                }`}>
                   RECIPE JOURNAL
                 </span>
                 <span className="text-xs text-[#7A7268] font-mono">
@@ -455,7 +648,7 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
               </div>
               <div className="text-xs text-[#7A7268] flex items-center gap-2">
                 <Calendar className="w-3.5 h-3.5 text-[#C85A32]" />
-                <span>手帐日期：{recipe.review?.cookDate || recipe.createdAt}</span>
+                <span>记录于：{recipe.review?.cookDate || recipe.createdAt}</span>
                 {recipe.weatherStamp && (
                   <>
                     <span className="text-[#C85A32]">·</span>
@@ -465,9 +658,9 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
               </div>
             </div>
 
-            {/* Header: Title & Story */}
+            {/* Title & Mood Quote */}
             <div className="mb-6">
-              <div className="flex flex-wrap items-center gap-2 text-xs text-[#7A7268] mb-2 font-serif">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-[#7A7268] mb-1.5 font-serif">
                 <span className="font-semibold text-[#2C2723]">{recipe.category}</span>
                 {recipe.subCategory && (
                   <>
@@ -489,7 +682,7 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
 
               {/* Tags */}
               {recipe.tags && recipe.tags.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mb-2">
+                <div className="flex flex-wrap gap-1.5 mb-2.5">
                   {recipe.tags.map((tag) => (
                     <span
                       key={tag}
@@ -503,7 +696,7 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
 
               {/* Metadata parameter badge strip */}
               <div className="mt-3 py-2 px-3 bg-[#FAF7F2] border border-[#EADBCE] rounded-lg flex flex-wrap items-center justify-between gap-3 text-xs text-[#5A5248] print-avoid-break">
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 flex-wrap">
                   <span className="flex items-center gap-1">
                     <Clock className="w-3.5 h-3.5 text-[#C85A32]" />
                     <span>备料 <strong>{recipe.prepTimeMinutes}</strong> 分钟</span>
@@ -533,11 +726,16 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
               </div>
             </div>
 
-            {/* Featured Cover Photo (if available) */}
+            {/* Featured Cover Photo (Polaroid Style with Corner Tape) */}
             {recipe.coverImage && (
-              <div className="mb-6 print-avoid-break">
-                <div className="bg-[#FAF7F2] p-2.5 rounded-xl border border-[#EADBCE] shadow-xs">
-                  <div className="aspect-[21/9] w-full rounded-lg overflow-hidden bg-[#EADBCE]/30">
+              <div className="mb-6 print-avoid-break flex justify-center">
+                <div className="bg-white p-2.5 pb-3 rounded-lg border border-[#EADBCE] shadow-sm max-w-xl w-full relative -rotate-0.5">
+                  {/* Washi tape pinned on top left */}
+                  <div className="absolute -top-2 left-6 washi-tape px-4 py-0.5 bg-[#C85A32]/80 text-white text-[9px] font-mono tracking-widest uppercase">
+                    POLAROID
+                  </div>
+
+                  <div className="aspect-[21/9] w-full rounded overflow-hidden bg-[#FAF7F2]">
                     <img
                       src={recipe.coverImage}
                       alt={recipe.title}
@@ -545,18 +743,18 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
                       className="w-full h-full object-cover"
                     />
                   </div>
-                  <div className="mt-1 text-right text-[10px] text-[#9A9085] italic font-serif">
-                    手帐私房定妆照 · {recipe.title}
+                  <div className="mt-1 text-center text-[10px] text-[#7A7268] italic font-serif">
+                    私房手作定妆照 · {recipe.title}
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Section 1: 食材清单与配比 (Ingredients Table) */}
+            {/* ================= SECTION 1: 食材清单与配比 ================= */}
             <div className="mb-6 print-avoid-break">
               <div className="flex items-center justify-between border-b-2 border-[#EADBCE] pb-1.5 mb-3">
                 <h2 className="text-base font-bold font-journal-title text-[#2C2723] flex items-center gap-2">
-                  <span>🛒 食材清单与配比</span>
+                  <span>🛒 食材用量清单与配比</span>
                   <span className="text-xs font-normal text-[#7A7268] font-sans">
                     ({servings}人份用量)
                   </span>
@@ -564,11 +762,11 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
                 <span className="text-xs text-[#7A7268]">共 {recipe.ingredients.length} 种用料</span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                 {/* Main ingredients */}
                 {mainIngredients.length > 0 && (
-                  <div className="bg-[#FAF7F2]/80 border border-[#EADBCE] rounded-lg p-2.5">
-                    <div className="text-[11px] font-bold text-[#C85A32] uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                  <div className="bg-[#FAF7F2]/80 border border-[#EADBCE] rounded-lg p-3">
+                    <div className="text-[11px] font-bold text-[#C85A32] uppercase tracking-wider mb-2 flex items-center gap-1.5">
                       <span className="w-1.5 h-1.5 rounded-full bg-[#C85A32]" />
                       <span>主料 / 生鲜禽肉蔬菜</span>
                     </div>
@@ -588,8 +786,8 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
 
                 {/* Seasoning ingredients */}
                 {seasoningIngredients.length > 0 && (
-                  <div className="bg-[#FAF7F2]/80 border border-[#EADBCE] rounded-lg p-2.5">
-                    <div className="text-[11px] font-bold text-[#C08A3E] uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                  <div className="bg-[#FAF7F2]/80 border border-[#EADBCE] rounded-lg p-3">
+                    <div className="text-[11px] font-bold text-[#C08A3E] uppercase tracking-wider mb-2 flex items-center gap-1.5">
                       <span className="w-1.5 h-1.5 rounded-full bg-[#C08A3E]" />
                       <span>调味 / 黄金酱汁配比</span>
                     </div>
@@ -609,8 +807,8 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
 
                 {/* Garnish ingredients */}
                 {garnishIngredients.length > 0 && (
-                  <div className="bg-[#FAF7F2]/80 border border-[#EADBCE] rounded-lg p-2.5">
-                    <div className="text-[11px] font-bold text-[#5F7A4D] uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                  <div className="bg-[#FAF7F2]/80 border border-[#EADBCE] rounded-lg p-3">
+                    <div className="text-[11px] font-bold text-[#5F7A4D] uppercase tracking-wider mb-2 flex items-center gap-1.5">
                       <span className="w-1.5 h-1.5 rounded-full bg-[#5F7A4D]" />
                       <span>配菜 / 点缀提香</span>
                     </div>
@@ -630,11 +828,11 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
               </div>
             </div>
 
-            {/* Section 2: 烹饪步骤与时序 (Step-by-Step Cooking Instructions) */}
+            {/* ================= SECTION 2: 烹饪步骤与时序 ================= */}
             <div className="mb-6">
               <div className="flex items-center justify-between border-b-2 border-[#EADBCE] pb-1.5 mb-4">
                 <h2 className="text-base font-bold font-journal-title text-[#2C2723]">
-                  🍳 烹饪步骤与时序
+                  🍳 烹饪步骤与时序清关
                 </h2>
                 <span className="text-xs text-[#7A7268]">共 {recipe.steps.length} 个步骤</span>
               </div>
@@ -643,11 +841,13 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
                 {recipe.steps.map((step, idx) => (
                   <div
                     key={step.id || idx}
-                    className="p-3.5 bg-[#FAF7F2]/70 border border-[#EADBCE] rounded-xl print-avoid-break"
+                    className="p-3.5 bg-[#FAF7F2]/75 border border-[#EADBCE] rounded-xl print-avoid-break"
                   >
                     <div className="flex items-center justify-between gap-2 mb-2">
                       <div className="flex items-center gap-2">
-                        <span className="w-5 h-5 rounded-full bg-[#C85A32] text-white font-mono font-bold text-xs flex items-center justify-center shrink-0">
+                        <span className={`w-5 h-5 rounded-full text-white font-mono font-bold text-xs flex items-center justify-center shrink-0 ${
+                          borderStyle === 'botanical' ? 'bg-[#5F7A4D]' : 'bg-[#C85A32]'
+                        }`}>
                           {step.stepNumber || idx + 1}
                         </span>
                         <h3 className="font-bold text-[#2C2723] text-sm">
@@ -657,13 +857,15 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
 
                       <div className="flex items-center gap-2 text-xs">
                         {step.heat && (
-                          <span className="px-2 py-0.5 rounded bg-white border border-[#EADBCE] text-[#C85A32] font-medium text-[11px]">
-                            {step.heat}
+                          <span className="px-2 py-0.5 rounded bg-white border border-[#EADBCE] text-[#C85A32] font-semibold text-[11px] flex items-center gap-1">
+                            <Flame className="w-3 h-3" />
+                            <span>{step.heat}</span>
                           </span>
                         )}
                         {step.durationMinutes && (
-                          <span className="px-2 py-0.5 rounded bg-white border border-[#EADBCE] text-[#7A7268] font-mono text-[11px]">
-                            ⏱️ {step.durationMinutes}分钟
+                          <span className="px-2 py-0.5 rounded bg-white border border-[#EADBCE] text-[#7A7268] font-mono text-[11px] flex items-center gap-1">
+                            <Clock className="w-3 h-3 text-[#C85A32]" />
+                            <span>{step.durationMinutes}分钟</span>
                           </span>
                         )}
                       </div>
@@ -678,7 +880,7 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
                       <div className="ml-7 bg-[#FFFDF9] border border-[#E8DCC4] rounded-md p-2 text-xs text-[#6B5838] flex items-start gap-1.5">
                         <AlertTriangle className="w-3.5 h-3.5 text-[#C08A3E] shrink-0 mt-0.5" />
                         <div>
-                          <strong className="font-semibold text-[#8C5D1E]">避坑提示: </strong>
+                          <strong className="font-semibold text-[#8C5D1E]">避坑要领: </strong>
                           <span>{step.tip}</span>
                         </div>
                       </div>
@@ -687,7 +889,7 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
                     {/* Step photo if enabled and available */}
                     {includeStepPhotos && step.photoUrl && (
                       <div className="mt-2.5 ml-7 max-w-sm">
-                        <div className="aspect-[16/9] rounded-lg overflow-hidden border border-[#EADBCE]">
+                        <div className="aspect-[16/9] rounded-lg overflow-hidden border border-[#EADBCE] shadow-2xs">
                           <img
                             src={step.photoUrl}
                             alt={step.title}
@@ -702,13 +904,14 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
               </div>
             </div>
 
-            {/* Section 3: 烹饪心得与手帐复盘 (Reflections, Ratings & Stickers) */}
+            {/* ================= SECTION 3: 烹饪心得与手帐复盘 ================= */}
             {includeReview && recipe.review && (
               <div className="mb-6 p-4 sm:p-5 bg-[#FAF7F2] border border-[#EADBCE] rounded-xl relative print-avoid-break">
-                {/* Vintage Seal Stamp */}
+                
+                {/* Wax Seal Stamp in Top Right */}
                 {includeStamps && (
-                  <div className="absolute top-3 right-3 text-[#C85A32] pointer-events-none">
-                    <div className="seal-stamp text-[11px] font-bold">
+                  <div className="absolute top-3 right-4 text-[#C85A32] pointer-events-none rotate-3">
+                    <div className="seal-stamp text-[11px] font-bold tracking-wider">
                       ★ 私房品鉴 ★
                     </div>
                   </div>
@@ -767,7 +970,7 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
 
                   {recipe.review.pairingSuggestions && (
                     <div className="bg-white/80 p-2.5 rounded-md border border-[#EADBCE]/80">
-                      <strong className="text-[#5F7A4D] block mb-0.5">🍷 绝佳搭档 (主食/饮品):</strong>
+                      <strong className="text-[#5F7A4D] block mb-0.5">🍷 绝佳搭档 (主食/佐餐饮品):</strong>
                       <p className="text-[#5A5248] leading-relaxed">{recipe.review.pairingSuggestions}</p>
                     </div>
                   )}
@@ -785,7 +988,7 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
                       {recipe.review.stickers.map((stk, idx) => (
                         <span
                           key={idx}
-                          className="px-2 py-0.5 text-[11px] font-medium bg-white border border-[#EADBCE] text-[#2C2723] rounded-full"
+                          className="px-2 py-0.5 text-[11px] font-medium bg-white border border-[#EADBCE] text-[#2C2723] rounded-full shadow-2xs"
                         >
                           {stk}
                         </span>
@@ -796,7 +999,7 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
               </div>
             )}
 
-            {/* Section 4: 烹饪画廊相册花絮 (Gallery Photos) */}
+            {/* ================= SECTION 4: 烹饪画廊相册花絮 ================= */}
             {includeGallery && recipe.galleryPhotos && recipe.galleryPhotos.length > 0 && (
               <div className="mb-6 print-avoid-break">
                 <div className="flex items-center justify-between border-b-2 border-[#EADBCE] pb-1.5 mb-3">
@@ -827,11 +1030,12 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
               </div>
             )}
 
-            {/* Footer Watermark & Page info */}
+            {/* ================= FOOTER COLOPHON ================= */}
             <div className="pt-6 border-t border-[#EADBCE] text-center text-xs text-[#9A9085] flex flex-col items-center gap-1">
-              <span className="font-serif">—— 食味手记 · 私房烹饪手帐 ——</span>
-              <span className="text-[10px]">记录每一次与美食相遇的幸福时光 · 打印导出时间：{new Date().toLocaleDateString('zh-CN')}</span>
+              <span className="font-serif tracking-wider">—— 食味手记 · 私房烹饪手帐 ——</span>
+              <span className="text-[10px]">记录每一次与美食相遇的幸福时光 · 宜烹饪 宜欢聚 · 打印导出时间：{new Date().toLocaleDateString('zh-CN')}</span>
             </div>
+
           </div>
 
         </div>
@@ -841,12 +1045,13 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
           <div className="flex items-center gap-1.5">
             <BookOpen className="w-4 h-4 text-[#C85A32]" />
             <span>
-              💡 打印提示：点击「立即打印 / 另存为 PDF」后，目标打印机选择<strong>「另存为 PDF」</strong>即可将整篇手帐保存为精美文档。
+              💡 打印贴士：点击「立即打印 / 另存为 PDF」后，目标打印机选择<strong>「另存为 PDF」</strong>即可将整篇带有手帐精美边框的排版保存为矢量文档。
             </span>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="px-4 py-1.5 rounded-md border border-[#EADBCE] bg-white hover:bg-[#FAF7F2] text-[#2C2723] font-medium transition-colors"
+            className="px-4 py-1.5 rounded-lg border border-[#EADBCE] bg-white hover:bg-[#FAF7F2] text-[#2C2723] font-medium transition-colors"
           >
             完成并关闭
           </button>

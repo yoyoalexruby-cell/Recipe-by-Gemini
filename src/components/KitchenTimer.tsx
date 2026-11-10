@@ -5,16 +5,18 @@ interface KitchenTimerProps {
   initialMinutes?: number;
   label?: string;
   onClose?: () => void;
+  autoStart?: boolean;
 }
 
 export const KitchenTimer: React.FC<KitchenTimerProps> = ({
   initialMinutes = 5,
   label = '烹饪计时器',
-  onClose
+  onClose,
+  autoStart = true
 }) => {
   const [totalSeconds, setTotalSeconds] = useState(initialMinutes * 60);
   const [remainingSeconds, setRemainingSeconds] = useState(initialMinutes * 60);
-  const [isRunning, setIsRunning] = useState(false);
+  const [isRunning, setIsRunning] = useState(autoStart);
   const [hasFinished, setHasFinished] = useState(false);
   const intervalRef = useRef<number | null>(null);
 
@@ -22,9 +24,9 @@ export const KitchenTimer: React.FC<KitchenTimerProps> = ({
   useEffect(() => {
     setTotalSeconds(initialMinutes * 60);
     setRemainingSeconds(initialMinutes * 60);
-    setIsRunning(false);
+    setIsRunning(autoStart);
     setHasFinished(false);
-  }, [initialMinutes]);
+  }, [initialMinutes, autoStart]);
 
   // Audio tone generator using Web Audio API
   const playAlertSound = () => {

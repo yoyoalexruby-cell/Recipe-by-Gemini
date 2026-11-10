@@ -203,11 +203,11 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
 
           <button
             onClick={() => setIsExportPDFOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[#2C2723] bg-white border border-[#EADBCE] hover:border-[#C85A32] hover:text-[#C85A32] rounded-md transition-colors shadow-2xs"
-            title="导出为排版精美的 PDF 手帐文档或打印"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-[#C85A32] hover:bg-[#B34C26] rounded-md transition-all shadow-2xs active:scale-95"
+            title="生成排版精美、边框考究的手帐打印版并预览导出 PDF"
           >
-            <Printer className="w-3.5 h-3.5 text-[#C85A32]" />
-            <span>导出PDF / 打印</span>
+            <Printer className="w-3.5 h-3.5" />
+            <span>生成打印版手帐</span>
           </button>
 
           <button
@@ -679,12 +679,12 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
 
                       {step.durationMinutes && (
                         <button
-                          onClick={() => onStartTimer(step.durationMinutes!, `${recipe.title} - 第${step.stepNumber}步`)}
-                          className="text-[11px] font-mono text-[#7A7268] hover:text-[#C85A32] bg-white border border-[#EADBCE] hover:border-[#C85A32] px-2 py-0.5 rounded transition-colors flex items-center gap-1"
-                          title="点击快速开启计时器"
+                          onClick={() => onStartTimer(step.durationMinutes!, `${recipe.title} - 第${step.stepNumber || idx + 1}步: ${step.title}`)}
+                          className="text-[11px] font-medium text-[#7A7268] hover:text-[#C85A32] bg-white border border-[#EADBCE] hover:border-[#C85A32] px-2.5 py-1 rounded-md transition-colors flex items-center gap-1.5 shadow-2xs"
+                          title="点击一键启动全局悬浮计时器"
                         >
-                          <Timer className="w-3 h-3 text-[#C85A32]" />
-                          <span>{step.durationMinutes}分钟</span>
+                          <Timer className="w-3.5 h-3.5 text-[#C85A32]" />
+                          <span>一键启动计时 ({step.durationMinutes}分)</span>
                         </button>
                       )}
                     </div>
@@ -884,6 +884,30 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
           </div>
         </section>
 
+        {/* Bottom Printable Journal Callout Banner */}
+        <div className="mt-8 pt-6 border-t border-[#EADBCE] flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4.5 bg-[#FAF7F2] rounded-xl border border-dashed border-[#C85A32]/35 no-print">
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-white border border-[#EADBCE] text-[#C85A32] flex items-center justify-center shrink-0 shadow-2xs">
+              <Printer className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold font-serif text-[#2C2723]">
+                将本道食谱生成精美排版的 A4 打印版手帐
+              </h4>
+              <p className="text-xs text-[#7A7268] mt-0.5">
+                支持古典双线边框、火漆邮政印记、清新草木等风格装饰，并可即时预览、另存为 PDF 或导出高清长图。
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setIsExportPDFOpen(true)}
+            className="px-4 py-2 text-xs font-bold text-white bg-[#C85A32] hover:bg-[#B34C26] rounded-lg transition-all shadow-sm flex items-center justify-center gap-1.5 shrink-0 active:scale-95"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            <span>生成打印版手帐</span>
+          </button>
+        </div>
+
       </div>
 
       {/* Floating Toast Notification */}
@@ -920,6 +944,14 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
         onClose={() => setIsExportPDFOpen(false)}
         recipe={recipe}
         servings={servings}
+      />
+
+      {/* Quick Online Purchase & QR Code Modal */}
+      <QuickPurchaseModal
+        isOpen={isPurchaseModalOpen}
+        onClose={() => setIsPurchaseModalOpen(false)}
+        items={purchaseItems}
+        sourceTitle={`《${recipe.title}》(${servings}人份)`}
       />
     </article>
   );
