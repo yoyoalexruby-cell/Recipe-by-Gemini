@@ -210,6 +210,28 @@
     border-color: #333333 !important;
   }
 
+  /* Vintage Paper Texture mode in print */
+  body.print-vintage-paper #recipe-print-document {
+    background-color: #F6EFE3 !important;
+  }
+
+  body.print-vintage-paper.print-kraft #recipe-print-document {
+    background-color: #EFE6DC !important;
+  }
+
+  body.print-vintage-paper.print-botanical #recipe-print-document {
+    background-color: #F2F5ED !important;
+  }
+
+  body.print-vintage-paper.print-minimal-ink #recipe-print-document {
+    background-color: #FAF9F6 !important;
+  }
+
+  .vintage-paper-overlay {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
   /* Page break avoidance on recipe elements */
   .print-avoid-break,
   .print-page section,

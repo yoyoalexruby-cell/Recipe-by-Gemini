@@ -26,6 +26,7 @@ import { PWAInstallModal } from './components/PWAInstallModal';
 import { GitHubSyncModal } from './components/GitHubSyncModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { CulinarySquareView } from './components/CulinarySquareView';
+import { MasterChefContestView } from './components/MasterChefContestView';
 import { SharedRecipePage } from './components/SharedRecipePage';
 import { AuthModal } from './components/AuthModal';
 import { UserProfileModal } from './components/UserProfileModal';
@@ -43,9 +44,12 @@ import {
   ALL_CATEGORIES_LIST, 
   getSubcategoriesForCategory 
 } from './types/categories';
-import { Search, Heart, Plus, BookOpen, Smartphone, Sparkles, User, LogIn, Check, Tag, Calendar, Layers } from 'lucide-react';
+import { Search, Heart, Plus, BookOpen, Smartphone, Sparkles, User, LogIn, Check, Tag, Calendar, Layers, Trophy } from 'lucide-react';
+import { useI18n } from './i18n/context';
 
 export default function App() {
+  const { t, getCategoryLabel, getSubcategoryLabel, language } = useI18n();
+
   // Multi-user authentication state
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => getCurrentUser());
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
@@ -56,7 +60,7 @@ export default function App() {
   const [publicRecipes, setPublicRecipes] = useState<Recipe[]>(() => getPublicSquareRecipes());
 
   // Navigation & Selected Recipe
-  const [activeView, setActiveView] = useState<'journal' | 'calendar' | 'square' | 'pantry' | 'notes' | 'backup'>('journal');
+  const [activeView, setActiveView] = useState<'journal' | 'calendar' | 'square' | 'contest' | 'pantry' | 'notes' | 'backup'>('journal');
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
   const [sharedRecipeTarget, setSharedRecipeTarget] = useState<Recipe | null>(null);
 
@@ -277,14 +281,14 @@ export default function App() {
   const categories = useMemo(() => {
     const list = Object.keys(activeTaxonomy);
     return [
-      { id: 'all', label: '全部菜谱', icon: '📖' },
+      { id: 'all', label: t('category.all', '全部菜谱'), icon: '📖' },
       ...list.map((c) => ({
         id: c,
-        label: c,
+        label: getCategoryLabel(c),
         icon: activeTaxonomy[c]?.icon || '🥢'
       }))
     ];
-  }, [activeTaxonomy]);
+  }, [activeTaxonomy, language, t]);
 
   const handleOpenCompliance = (tab: 'privacy' | 'terms' | 'permissions' | 'cancellation' | 'filings' = 'privacy') => {
     setComplianceTab(tab);
@@ -445,26 +449,35 @@ export default function App() {
                       />
                     </div>
 
-                    {/* Favorites Toggle & Square shortcut */}
-                    <div className="flex items-center gap-2">
+                    {/* Favorites Toggle & Contest / Square shortcut */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        onClick={() => setActiveView('contest')}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border border-amber-400/80 bg-amber-50 text-amber-950 hover:bg-amber-100 transition-colors shadow-2xs relative"
+                      >
+                        <Trophy className="w-3.5 h-3.5 text-amber-600 fill-amber-400" />
+                        <span>{language === 'zh-CN' ? '厨神大赛打擂' : 'Master Chef Contest'}</span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping absolute -top-0.5 -right-0.5" />
+                      </button>
+
                       <button
                         onClick={() => setActiveView('square')}
-                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold border border-[#C85A32]/40 bg-amber-50/50 text-[#C85A32] hover:bg-amber-100/50 transition-colors"
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border border-[#C85A32]/40 bg-orange-50/50 text-[#C85A32] hover:bg-orange-100/50 transition-colors"
                       >
                         <Sparkles className="w-3.5 h-3.5" />
-                        <span>去食味广场找灵感</span>
+                        <span>{t('journal.squareInspiration', '去食味广场找灵感')}</span>
                       </button>
 
                       <button
                         onClick={() => setFavoritesOnly(!favoritesOnly)}
-                        className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border transition-colors shrink-0 ${
+                        className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border transition-colors shrink-0 ${
                           favoritesOnly
                             ? 'bg-rose-50 text-rose-600 border-rose-200 shadow-2xs'
                             : 'bg-[#FAF7F2] text-[#7A7268] border-[#EADBCE] hover:text-[#2C2723]'
                         }`}
                       >
                         <Heart className={`w-3.5 h-3.5 ${favoritesOnly ? 'fill-current' : ''}`} />
-                        <span>{favoritesOnly ? '只看常做收藏' : '筛选收藏'}</span>
+                        <span>{favoritesOnly ? (language === 'zh-CN' ? '只看常做收藏' : 'Favorites') : (language === 'zh-CN' ? '筛选收藏' : 'Favorites')}</span>
                       </button>
                     </div>
                   </div>
@@ -680,6 +693,21 @@ export default function App() {
               />
             )}
 
+            {/* VIEW 3.5: MASTER CHEF CONTEST ARENA */}
+            {activeView === 'contest' && (
+              <MasterChefContestView
+                currentUser={currentUser}
+                userRecipes={recipes}
+                onOpenRecipe={(rec) => setSelectedRecipe(rec)}
+                onOpenAuth={() => setIsAuthModalOpen(true)}
+                onRecipeCloned={(cloned) => {
+                  setRecipes(getUserRecipes(currentUser));
+                  setPublicRecipes(getPublicSquareRecipes());
+                  setSelectedRecipe(cloned);
+                }}
+              />
+            )}
+
             {/* VIEW 4: COOKING EXECUTION & PREPARATION WORKBENCH */}
             {activeView === 'pantry' && (
               <CookingExecutionView
@@ -789,6 +817,14 @@ export default function App() {
             setCurrentUser(null);
             setRecipes(getUserRecipes(null));
             setPublicRecipes(getPublicSquareRecipes());
+          }}
+          onNavigateToContest={() => {
+            setActiveView('contest');
+            setSelectedRecipe(null);
+          }}
+          onNavigateToNewRecipe={() => {
+            setEditingRecipe(null);
+            setIsEditorOpen(true);
           }}
         />
       )}

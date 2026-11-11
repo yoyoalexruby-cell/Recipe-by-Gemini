@@ -15,6 +15,7 @@ import { RecipePDFExportModal } from './RecipePDFExportModal';
 import { estimateRecipeCalories } from '../utils/nutritionCalculator';
 import { QuickPurchaseModal } from './QuickPurchaseModal';
 import { PurchaseItem } from '../utils/shoppingPlatforms';
+import { useI18n } from '../i18n/context';
 
 interface RecipeDetailProps {
   recipe: Recipe;
@@ -35,6 +36,8 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
   onUpdateRecipe,
   onStartTimer
 }) => {
+  const { t, language, getCategoryLabel, getSubcategoryLabel, getDifficultyLabel, getHeatLabel, getWeatherLabel, formatMinutes, formatServings } = useI18n();
+
   // Servings multiplier state
   const [servings, setServings] = useState<number>(recipe.baseServings || 2);
   const [checkedIngredients, setCheckedIngredients] = useState<Record<string, boolean>>({});
@@ -154,7 +157,7 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
           className="inline-flex items-center gap-2 text-sm text-[#7A7268] hover:text-[#2C2723] transition-colors py-1 px-2 rounded-md hover:bg-[#FAF7F2]"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>返回手帐本</span>
+          <span>{t('detail.back', '返回手帐本')}</span>
         </button>
 
         <div className="flex items-center gap-2">
@@ -166,31 +169,31 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
                 ? 'bg-emerald-50 text-emerald-800 border-emerald-300 shadow-2xs'
                 : 'bg-[#FAF7F2] text-[#7A7268] border-[#EADBCE] hover:text-[#2C2723]'
             }`}
-            title={recipe.isPublic ? '已公开发布，点击可转为私密' : '当前私密，点击发布到食味广场'}
+            title={recipe.isPublic ? (language === 'zh-CN' ? '已公开发布，点击可转为私密' : 'Public recipe, click to make private') : (language === 'zh-CN' ? '当前私密，点击发布到食味广场' : 'Private recipe, click to publish')}
           >
-            <span>{recipe.isPublic ? '🌐 广场已公开' : '🔒 私密手帐'}</span>
+            <span>{recipe.isPublic ? (language === 'zh-CN' ? '🌐 广场已公开' : '🌐 Public') : (language === 'zh-CN' ? '🔒 私密手帐' : '🔒 Private')}</span>
           </button>
 
           <button
             onClick={() => {
               const shareUrl = `${window.location.origin}${window.location.pathname}?recipeId=${recipe.id}`;
               navigator.clipboard.writeText(shareUrl);
-              setMarkToast('已复制专属分享链接！朋友点开即可查阅并一键克隆到自己的手帐。');
+              setMarkToast(language === 'zh-CN' ? '已复制专属分享链接！朋友点开即可查阅并一键克隆到自己的手帐。' : 'Share link copied to clipboard!');
               setTimeout(() => setMarkToast(null), 3000);
             }}
             className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-[#5A5248] bg-white border border-[#EADBCE] hover:bg-[#FAF7F2] rounded-md transition-colors"
-            title="复制专属好友分享链接"
+            title={t('detail.shareLink', '复制专属好友分享链接')}
           >
-            <span>🔗 分享链接</span>
+            <span>{t('detail.shareLink', '🔗 分享链接')}</span>
           </button>
 
           <button
             onClick={() => setIsMarkModalOpen(true)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-[#C85A32] hover:bg-[#B34C26] active:scale-[0.98] rounded-md transition-all shadow-2xs"
-            title="将这道菜标记为今天（或指定日期）的下厨打卡记录"
+            title={t('detail.markCooked', '打卡下厨')}
           >
             <Calendar className="w-3.5 h-3.5" />
-            <span>打卡下厨</span>
+            <span>{t('detail.markCooked', '打卡下厨')}</span>
           </button>
 
           <button
@@ -198,16 +201,16 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#C85A32] bg-[#FAF7F2] border border-[#EADBCE] hover:bg-[#F3ECE4] rounded-md transition-colors"
           >
             <Share2 className="w-3.5 h-3.5" />
-            <span>制作手帐卡</span>
+            <span>{t('detail.makeCard', '制作手帐卡')}</span>
           </button>
 
           <button
             onClick={() => setIsExportPDFOpen(true)}
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-[#C85A32] hover:bg-[#B34C26] rounded-md transition-all shadow-2xs active:scale-95"
-            title="生成排版精美、边框考究的手帐打印版并预览导出 PDF"
+            title={t('detail.printJournal', '生成打印版手帐')}
           >
             <Printer className="w-3.5 h-3.5" />
-            <span>生成打印版手帐</span>
+            <span>{t('detail.printJournal', '生成打印版手帐')}</span>
           </button>
 
           <button
@@ -215,17 +218,17 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#2C2723] bg-white border border-[#EADBCE] hover:bg-[#FAF7F2] rounded-md transition-colors"
           >
             <Edit3 className="w-3.5 h-3.5" />
-            <span>编辑</span>
+            <span>{t('detail.edit', '编辑')}</span>
           </button>
 
           <button
             onClick={() => {
-              if (confirm(`确定要从手帐中移除「${recipe.title}」吗？`)) {
+              if (confirm(`${t('detail.confirmDelete', '确定要从手帐中移除此道菜谱吗？')} (${recipe.title})`)) {
                 onDelete(recipe.id);
               }
             }}
             className="p-1.5 text-[#9A9085] hover:text-rose-600 rounded-md transition-colors"
-            title="删除菜谱"
+            title={t('detail.delete', '删除菜谱')}
           >
             <Trash2 className="w-4 h-4" />
           </button>
@@ -245,21 +248,21 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
         {/* Header Block: Title & Story */}
         <div className="mb-8 pt-2">
           <div className="flex flex-wrap items-center gap-2 text-xs text-[#7A7268] mb-2">
-            <span className="font-medium text-[#2C2723]">{recipe.category}</span>
+            <span className="font-medium text-[#2C2723]">{getCategoryLabel(recipe.category)}</span>
             {recipe.subCategory && (
               <>
                 <span aria-hidden="true" className="text-[#C85A32]/60">/</span>
-                <span className="text-[#C85A32] font-semibold">{recipe.subCategory}</span>
+                <span className="text-[#C85A32] font-semibold">{getSubcategoryLabel(recipe.subCategory)}</span>
               </>
             )}
             <span aria-hidden="true">·</span>
             <span>{recipe.cuisine}</span>
             <span aria-hidden="true">·</span>
-            <span>记录于 {recipe.review?.cookDate || recipe.createdAt}</span>
+            <span>{t('common.recordedOn', '记录于')} {recipe.review?.cookDate || recipe.createdAt}</span>
             {recipe.weatherStamp && (
               <>
                 <span aria-hidden="true">·</span>
-                <span>{recipe.weatherStamp}</span>
+                <span>{getWeatherLabel(recipe.weatherStamp)}</span>
               </>
             )}
           </div>
@@ -361,25 +364,25 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
               <div className="flex items-center gap-4">
                 <span className="flex items-center gap-1.5">
                   <Clock className="w-4 h-4 text-[#C85A32]" />
-                  <span>备料 <strong className="font-mono tabular-nums text-[#2C2723]">{recipe.prepTimeMinutes}</strong> 分钟</span>
+                  <span>{t('recipe.prepTime', '备料')} <strong className="font-mono tabular-nums text-[#2C2723]">{recipe.prepTimeMinutes}</strong> {t('common.minutes', '分钟')}</span>
                 </span>
                 <span className="flex items-center gap-1.5">
                   <Flame className="w-4 h-4 text-[#C85A32]" />
-                  <span>烹饪 <strong className="font-mono tabular-nums text-[#2C2723]">{recipe.cookTimeMinutes}</strong> 分钟</span>
+                  <span>{t('recipe.cookTime', '烹饪')} <strong className="font-mono tabular-nums text-[#2C2723]">{recipe.cookTimeMinutes}</strong> {t('common.minutes', '分钟')}</span>
                 </span>
-                <span className="flex items-center gap-1.5" title="单人份预估热量">
+                <span className="flex items-center gap-1.5" title={t('recipe.calories', '单人份预估热量')}>
                   <Activity className="w-4 h-4 text-[#C85A32]" />
-                  <span>热量 <strong className="font-mono tabular-nums text-[#2C2723]">{nutritionEstimate.perServing}</strong> kcal/份</span>
+                  <span>{t('recipe.calories', '热量')} <strong className="font-mono tabular-nums text-[#2C2723]">{nutritionEstimate.perServing}</strong> {t('common.kcal', 'kcal')}/{t('common.serving', '份')}</span>
                 </span>
                 <span className="flex items-center gap-1.5">
                   <ChefHat className="w-4 h-4 text-[#C85A32]" />
-                  <span>难度 {'★'.repeat(recipe.difficulty || 3)}{'☆'.repeat(5 - (recipe.difficulty || 3))}</span>
+                  <span>{t('recipe.difficulty', '难度')} {getDifficultyLabel(recipe.difficulty || 3)}</span>
                 </span>
               </div>
 
               {recipe.utensils && recipe.utensils.length > 0 && (
                 <div className="flex items-center gap-1 text-[11px] text-[#9A9085]">
-                  <span>备置炊具:</span>
+                  <span>{t('detail.cookware', '备置炊具:')}</span>
                   <span className="text-[#5A5248]">{recipe.utensils.join(' / ')}</span>
                 </div>
               )}
@@ -392,9 +395,9 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
           <div className="flex flex-wrap items-center justify-between gap-4 mb-4 pb-2 border-b-2 border-[#EADBCE]">
             <div className="flex items-center gap-3">
               <h2 className="text-xl font-bold font-journal-title text-[#2C2723] flex items-center gap-2">
-                <span>食材清单</span>
+                <span>{t('detail.ingredientsTitle', '食材清单')}</span>
                 <span className="text-xs font-normal text-[#9A9085] font-sans">
-                  (已备齐 {checkedCount}/{totalIngredients})
+                  ({t('detail.preppedCount', '已备齐')} {checkedCount}/{totalIngredients})
                 </span>
               </h2>
             </div>
@@ -403,7 +406,7 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
             <div className="flex items-center gap-2 bg-[#FAF7F2] border border-[#EADBCE] rounded-lg p-1 text-xs">
               <span className="text-[#7A7268] px-2 flex items-center gap-1">
                 <Users className="w-3.5 h-3.5 text-[#C85A32]" />
-                <span>分量调节:</span>
+                <span>{t('detail.portionScaler', '分量调节:')}</span>
               </span>
               {[1, 2, 4, 6].map((num) => (
                 <button
@@ -415,26 +418,26 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
                       : 'text-[#7A7268] hover:text-[#2C2723]'
                   }`}
                 >
-                  {num}人份
+                  {formatServings(num)}
                 </button>
               ))}
 
               <button
                 onClick={handleCopyIngredients}
                 className="ml-2 px-2.5 py-1 bg-white border border-[#EADBCE] text-[#5A5248] hover:text-[#2C2723] rounded flex items-center gap-1 transition-colors"
-                title="复制食材文本"
+                title={t('detail.copyIngredients', '复制食材文本')}
               >
                 <Copy className="w-3 h-3" />
-                <span>{copySuccess ? '已复制！' : '复制清单'}</span>
+                <span>{copySuccess ? t('common.copied', '已复制！') : t('detail.copyIngredients', '复制清单')}</span>
               </button>
 
               <button
                 onClick={() => setIsPurchaseModalOpen(true)}
                 className="ml-1 px-2.5 py-1 bg-[#FAF7F2] border border-[#EADBCE] hover:border-[#C85A32] text-[#C85A32] rounded flex items-center gap-1.5 transition-colors font-medium shadow-2xs hover:bg-[#FAF2EA]"
-                title="关联各大生鲜平台搜索接口或生成二维码一键选购缺少食材"
+                title={t('detail.oneClickBuy', '一键选购')}
               >
                 <ShoppingBag className="w-3.5 h-3.5 text-[#C85A32]" />
-                <span>一键选购</span>
+                <span>{t('detail.oneClickBuy', '一键选购')}</span>
               </button>
             </div>
           </div>
@@ -523,7 +526,7 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
               <div>
                 <h3 className="text-xs font-semibold text-[#C85A32] tracking-wider uppercase mb-2 flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-[#C85A32]" />
-                  <span>主料 / 生鲜禽肉蔬菜</span>
+                  <span>{t('detail.mainIngredients', '主料 / 生鲜禽肉蔬菜')}</span>
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {mainIngredients.map((ing) => (
@@ -566,7 +569,7 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
               <div>
                 <h3 className="text-xs font-semibold text-[#C08A3E] tracking-wider uppercase mb-2 flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-[#C08A3E]" />
-                  <span>调料 / 酱汁配比</span>
+                  <span>{t('detail.seasoningIngredients', '调料 / 酱汁配比')}</span>
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {seasoningIngredients.map((ing) => (
@@ -609,7 +612,7 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
               <div>
                 <h3 className="text-xs font-semibold text-[#5F7A4D] tracking-wider uppercase mb-2 flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-[#5F7A4D]" />
-                  <span>配菜与点缀提香</span>
+                  <span>{t('detail.garnishIngredients', '配菜与点缀提香')}</span>
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {garnishIngredients.map((ing) => (
@@ -650,9 +653,9 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
         <section className="mb-12">
           <div className="flex items-center justify-between mb-6 pb-2 border-b-2 border-[#EADBCE]">
             <h2 className="text-xl font-bold font-journal-title text-[#2C2723]">
-              烹饪步骤与时序
+              {t('detail.stepsTitle', '烹饪步骤与时序')}
             </h2>
-            <span className="text-xs text-[#7A7268]">共 {recipe.steps.length} 个步骤</span>
+            <span className="text-xs text-[#7A7268]">({recipe.steps.length} {t('detail.stepsUnit', '步')})</span>
           </div>
 
           <div className="space-y-8 relative before:absolute before:left-4 before:top-4 before:bottom-4 before:w-0.5 before:bg-[#EADBCE]/80">
@@ -673,7 +676,7 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
                     <div className="flex items-center gap-2">
                       {step.heat && (
                         <span className="text-[11px] font-medium text-[#C85A32] bg-white border border-[#EADBCE] px-2 py-0.5 rounded">
-                          {step.heat}
+                          {getHeatLabel(step.heat)}
                         </span>
                       )}
 
@@ -684,7 +687,7 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
                           title="点击一键启动全局悬浮计时器"
                         >
                           <Timer className="w-3.5 h-3.5 text-[#C85A32]" />
-                          <span>一键启动计时 ({step.durationMinutes}分)</span>
+                          <span>{t('detail.startTimer', '一键启动计时')} ({step.durationMinutes}{t('common.minutes', '分')})</span>
                         </button>
                       )}
                     </div>
@@ -700,7 +703,7 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
                     <div className="bg-[#FFFDF9] border border-[#E8DCC4] rounded-lg p-3 text-xs text-[#6B5838] flex items-start gap-2">
                       <AlertTriangle className="w-4 h-4 text-[#C08A3E] shrink-0 mt-0.5" />
                       <div>
-                        <strong className="font-semibold text-[#8C5D1E]">避坑要点: </strong>
+                        <strong className="font-semibold text-[#8C5D1E]">{t('recipe.tip', '避坑提示')}: </strong>
                         <span>{step.tip}</span>
                       </div>
                     </div>
@@ -738,13 +741,13 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
 
           <h2 className="text-xl font-bold font-journal-title text-[#2C2723] mb-6 flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-[#C85A32]" />
-            <span>烹饪心得与手帐复盘</span>
+            <span>{t('detail.reviewTitle', '烹饪心得与手帐复盘')}</span>
           </h2>
 
           {/* 4-Axis Ratings */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6 bg-white p-4 rounded-xl border border-[#EADBCE]">
             <div>
-              <span className="text-[11px] text-[#7A7268] block mb-1">风味口感</span>
+              <span className="text-[11px] text-[#7A7268] block mb-1">{t('detail.tasteRating', '风味口感')}</span>
               <div className="flex items-center gap-1 text-[#C08A3E]">
                 <Star className="w-4 h-4 fill-current" />
                 <span className="font-mono font-bold text-sm text-[#2C2723]">

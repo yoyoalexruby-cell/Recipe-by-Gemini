@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { CookingStep } from '../types/recipe';
 import { 
   Volume2, VolumeX, Mic, MicOff, Play, Pause, 
@@ -7,7 +7,18 @@ import {
 } from 'lucide-react';
 import { useI18n } from '../i18n/context';
 
-interface CookingVoiceAssistantProps {
+export interface CookingVoiceAssistantHandle {
+  startGuidance: (stepIndex?: number) => void;
+  pauseGuidance: () => void;
+  resumeGuidance: () => void;
+  stopGuidance: () => void;
+  toggleGuidance: () => void;
+  isSpeaking: boolean;
+  isPaused: boolean;
+  isListening: boolean;
+}
+
+export interface CookingVoiceAssistantProps {
   recipeTitle: string;
   steps: CookingStep[];
   currentStepIndex: number;
@@ -17,9 +28,10 @@ interface CookingVoiceAssistantProps {
   onStartTimer?: (minutes: number, label: string) => void;
   onFinishAll?: () => void;
   className?: string;
+  onVoiceStateChange?: (state: { isSpeaking: boolean; isPaused: boolean; isListening: boolean }) => void;
 }
 
-export const CookingVoiceAssistant: React.FC<CookingVoiceAssistantProps> = ({
+export const CookingVoiceAssistant = forwardRef<CookingVoiceAssistantHandle, CookingVoiceAssistantProps>(({
   recipeTitle,
   steps,
   currentStepIndex,
@@ -28,8 +40,9 @@ export const CookingVoiceAssistant: React.FC<CookingVoiceAssistantProps> = ({
   checkedSteps,
   onStartTimer,
   onFinishAll,
-  className = ''
-}) => {
+  className = '',
+  onVoiceStateChange
+}, ref) => {
   const { t, language, currentOption } = useI18n();
 
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -504,6 +517,43 @@ export const CookingVoiceAssistant: React.FC<CookingVoiceAssistantProps> = ({
     setIsPaused(false);
   };
 
+  // Sync state changes with parent
+  useEffect(() => {
+    onVoiceStateChange?.({ isSpeaking, isPaused, isListening });
+  }, [isSpeaking, isPaused, isListening, onVoiceStateChange]);
+
+  // Expose imperative handle for external buttons (such as the top-level Voice Guidance button)
+  useImperativeHandle(ref, () => ({
+    startGuidance: (stepIndex?: number) => {
+      const targetIdx = typeof stepIndex === 'number' ? stepIndex : currentStepIndexRef.current;
+      if (typeof stepIndex === 'number' && stepIndex !== currentStepIndexRef.current) {
+        onStepChange(targetIdx);
+      }
+      speakStep(targetIdx);
+    },
+    pauseGuidance: () => {
+      handlePauseCommand();
+    },
+    resumeGuidance: () => {
+      handleResumeCommand();
+    },
+    stopGuidance: () => {
+      stopSpeaking();
+    },
+    toggleGuidance: () => {
+      if (isSpeaking) {
+        handlePauseCommand();
+      } else if (isPaused) {
+        handleResumeCommand();
+      } else {
+        speakStep(currentStepIndexRef.current);
+      }
+    },
+    isSpeaking,
+    isPaused,
+    isListening
+  }), [handlePauseCommand, handleResumeCommand, isListening, isPaused, isSpeaking, onStepChange, speakStep]);
+
   // Clean up on unmount
   useEffect(() => {
     return () => {
@@ -826,4 +876,6 @@ export const CookingVoiceAssistant: React.FC<CookingVoiceAssistantProps> = ({
 
     </div>
   );
-};
+});
+
+CookingVoiceAssistant.displayName = 'CookingVoiceAssistant';

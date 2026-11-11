@@ -1,12 +1,22 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
-import { SupportedLanguage, SUPPORTED_LANGUAGES, TranslationKey, LanguageOption } from './types';
+import { 
+  SupportedLanguage, 
+  SUPPORTED_LANGUAGES, 
+  TranslationKey, 
+  LanguageOption,
+  getCategoryLabel as helperCategoryLabel,
+  getSubcategoryLabel as helperSubcategoryLabel,
+  getDifficultyLabel as helperDifficultyLabel,
+  getHeatLabel as helperHeatLabel,
+  getWeatherLabel as helperWeatherLabel
+} from './types';
 import { zhTranslations } from './locales/zh';
 import { enTranslations } from './locales/en';
 import { jaTranslations } from './locales/ja';
 import { frTranslations } from './locales/fr';
 import { esTranslations } from './locales/es';
 
-const TRANSLATIONS: Record<SupportedLanguage, Record<TranslationKey, string>> = {
+const TRANSLATIONS: Record<SupportedLanguage, Record<string, string>> = {
   'zh-CN': zhTranslations,
   'en-US': enTranslations,
   'ja-JP': jaTranslations,
@@ -20,6 +30,13 @@ interface I18nContextValue {
   t: (key: TranslationKey, fallback?: string) => string;
   currentOption: LanguageOption;
   languages: LanguageOption[];
+  getCategoryLabel: (category: string) => string;
+  getSubcategoryLabel: (subcategory: string) => string;
+  getDifficultyLabel: (diff: number | string) => string;
+  getHeatLabel: (heat: string) => string;
+  getWeatherLabel: (weather: string) => string;
+  formatMinutes: (minutes: number) => string;
+  formatServings: (servings: number) => string;
 }
 
 const I18nContext = createContext<I18nContextValue | null>(null);
@@ -66,8 +83,31 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [language]);
 
   const t = (key: TranslationKey, fallback?: string): string => {
-    const dict = TRANSLATIONS[language] || TRANSLATIONS['zh-CN'];
-    return dict[key] || fallback || key;
+    const dict = TRANSLATIONS[language];
+    if (dict && dict[key]) return dict[key];
+
+    // Fallback chain: English -> Chinese -> fallback -> key
+    if (language !== 'en-US' && TRANSLATIONS['en-US']?.[key]) {
+      return TRANSLATIONS['en-US'][key];
+    }
+    if (TRANSLATIONS['zh-CN']?.[key]) {
+      return TRANSLATIONS['zh-CN'][key];
+    }
+    return fallback !== undefined ? fallback : key;
+  };
+
+  const getCategoryLabel = (category: string) => helperCategoryLabel(category, language);
+  const getSubcategoryLabel = (subcategory: string) => helperSubcategoryLabel(subcategory, language);
+  const getDifficultyLabel = (diff: number | string) => helperDifficultyLabel(diff, language);
+  const getHeatLabel = (heat: string) => helperHeatLabel(heat, language);
+  const getWeatherLabel = (weather: string) => helperWeatherLabel(weather, language);
+
+  const formatMinutes = (minutes: number) => {
+    return `${minutes} ${t('common.minutes', 'mins')}`;
+  };
+
+  const formatServings = (servings: number) => {
+    return `${servings} ${t('common.servings', 'servings')}`;
   };
 
   const value = useMemo(
@@ -77,6 +117,13 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       t,
       currentOption,
       languages: SUPPORTED_LANGUAGES,
+      getCategoryLabel,
+      getSubcategoryLabel,
+      getDifficultyLabel,
+      getHeatLabel,
+      getWeatherLabel,
+      formatMinutes,
+      formatServings,
     }),
     [language, currentOption]
   );
@@ -94,6 +141,13 @@ export const useI18n = (): I18nContextValue => {
       t: (key: TranslationKey, fallback?: string) => zhTranslations[key] || fallback || key,
       currentOption: SUPPORTED_LANGUAGES[0],
       languages: SUPPORTED_LANGUAGES,
+      getCategoryLabel: (cat: string) => helperCategoryLabel(cat, 'zh-CN'),
+      getSubcategoryLabel: (sub: string) => helperSubcategoryLabel(sub, 'zh-CN'),
+      getDifficultyLabel: (diff: number | string) => helperDifficultyLabel(diff, 'zh-CN'),
+      getHeatLabel: (heat: string) => helperHeatLabel(heat, 'zh-CN'),
+      getWeatherLabel: (weather: string) => helperWeatherLabel(weather, 'zh-CN'),
+      formatMinutes: (minutes: number) => `${minutes} 分钟`,
+      formatServings: (servings: number) => `${servings} 人份`,
     };
   }
   return ctx;

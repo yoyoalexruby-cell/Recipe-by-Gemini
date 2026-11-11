@@ -1,13 +1,13 @@
 import React from 'react';
-import { Plus, BookOpen, HeartHandshake, Database, Sparkles, User, LogIn, Calendar, ChefHat, Share2 } from 'lucide-react';
+import { Plus, BookOpen, HeartHandshake, Database, Sparkles, User, LogIn, Calendar, ChefHat, Share2, Trophy } from 'lucide-react';
 import { UserProfile } from '../types/auth';
 import { ThemeSwitcher } from './ThemeSwitcher';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { useI18n } from '../i18n/context';
 
 interface HeaderProps {
-  activeView: 'journal' | 'calendar' | 'square' | 'pantry' | 'notes' | 'backup';
-  setActiveView: (view: 'journal' | 'calendar' | 'square' | 'pantry' | 'notes' | 'backup') => void;
+  activeView: 'journal' | 'calendar' | 'square' | 'contest' | 'pantry' | 'notes' | 'backup';
+  setActiveView: (view: 'journal' | 'calendar' | 'square' | 'contest' | 'pantry' | 'notes' | 'backup') => void;
   currentUser: UserProfile | null;
   onOpenAuth: () => void;
   onOpenProfile: () => void;
@@ -34,13 +34,17 @@ export const Header: React.FC<HeaderProps> = ({
     <header className="sticky top-0 z-30 bg-[#FAF7F2]/95 backdrop-blur-md border-b border-[#EADBCE]">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4 sm:gap-6">
         
-        {/* Zone 1: Brand Wordmark (Single text element in display face) */}
+        {/* Zone 1: Brand Wordmark (Single text element in display face with distinctive app icon) */}
         <a 
           href="#journal"
           onClick={(e) => { e.preventDefault(); setActiveView('journal'); }}
-          className="text-lg sm:text-xl font-bold tracking-tight text-[#2C2723] font-journal-title whitespace-nowrap shrink-0 hover:text-[#C85A32] transition-colors flex items-center gap-2"
+          className="text-lg sm:text-xl font-bold tracking-tight text-[#2C2723] font-journal-title whitespace-nowrap shrink-0 hover:text-[#C85A32] transition-colors flex items-center gap-2.5"
         >
-          <span className="text-[#C85A32] text-xl sm:text-2xl font-normal">❖</span>
+          <img 
+            src="/icon.svg" 
+            alt="Culinary Journal Icon" 
+            className="w-8 h-8 rounded-lg shadow-2xs object-cover border border-[#EADBCE]" 
+          />
           <span>{t('nav.brand')}</span>
         </a>
 
@@ -80,6 +84,19 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Sparkles className="w-4 h-4 text-[#C85A32]" />
             <span>{t('nav.square')}</span>
+          </button>
+
+          <button
+            onClick={() => setActiveView('contest')}
+            className={`whitespace-nowrap shrink-0 transition-colors py-1 flex items-center gap-1.5 relative ${
+              activeView === 'contest' 
+                ? 'text-[#C85A32] font-semibold border-b-2 border-[#C85A32]' 
+                : 'hover:text-[#2C2723]'
+            }`}
+          >
+            <Trophy className="w-4 h-4 text-amber-500 fill-amber-400" />
+            <span>{t('nav.contest', '厨神大赛')}</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping absolute -top-0.5 -right-1" />
           </button>
 
           <button
@@ -218,6 +235,14 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <ChefHat className="w-4 h-4" />
           <span>{t('nav.workbench')}</span>
+        </button>
+        <button
+          onClick={() => setActiveView('contest')}
+          className={`flex flex-col items-center gap-1 relative ${activeView === 'contest' ? 'text-[#C85A32] font-semibold' : ''}`}
+        >
+          <Trophy className="w-4 h-4 text-amber-500 fill-amber-400" />
+          <span>{t('nav.contest', '厨神大赛')}</span>
+          <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping absolute -top-0.5 right-1" />
         </button>
         <button
           onClick={() => setActiveView('square')}

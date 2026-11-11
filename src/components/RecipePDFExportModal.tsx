@@ -3,7 +3,7 @@ import { Recipe, Ingredient } from '../types/recipe';
 import { 
   Printer, Download, X, Check, Image as ImageIcon, Sparkles, 
   Clock, Flame, ChefHat, Users, Star, Heart, AlertTriangle, 
-  Tag, Calendar, Camera, BookOpen, Layers, Feather, Stamp
+  Tag, Calendar, Camera, BookOpen, Layers, Feather, Stamp, Scroll, Coffee
 } from 'lucide-react';
 import { estimateRecipeCalories } from '../utils/nutritionCalculator';
 
@@ -15,6 +15,8 @@ interface RecipePDFExportModalProps {
 }
 
 export type JournalBorderStyle = 'vintage' | 'kraft' | 'botanical' | 'minimal';
+export type VintageTextureVibe = 'parchment' | 'tea-stain' | 'deckle-fiber';
+export type VintageTextureIntensity = 'subtle' | 'authentic' | 'antique';
 
 export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
   isOpen,
@@ -31,6 +33,11 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
   const [density, setDensity] = useState<'standard' | 'compact'>('standard');
   const [isExportingImage, setIsExportingImage] = useState(false);
   const [exportSuccessMsg, setExportSuccessMsg] = useState<string | null>(null);
+
+  // Vintage Paper Texture Overlay Settings
+  const [vintagePaperTexture, setVintagePaperTexture] = useState<boolean>(true);
+  const [textureVibe, setTextureVibe] = useState<VintageTextureVibe>('parchment');
+  const [textureIntensity, setTextureIntensity] = useState<VintageTextureIntensity>('authentic');
 
   const printSheetRef = useRef<HTMLDivElement>(null);
 
@@ -55,7 +62,7 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
   // Trigger print dialog
   const handlePrint = () => {
     // Set active print style on document body for print isolation
-    document.body.classList.remove('print-vintage', 'print-kraft', 'print-botanical', 'print-minimal-ink');
+    document.body.classList.remove('print-vintage', 'print-kraft', 'print-botanical', 'print-minimal-ink', 'print-vintage-paper');
     if (borderStyle === 'minimal') {
       document.body.classList.add('print-minimal-ink');
     } else if (borderStyle === 'kraft') {
@@ -66,11 +73,15 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
       document.body.classList.add('print-vintage');
     }
 
+    if (vintagePaperTexture) {
+      document.body.classList.add('print-vintage-paper');
+    }
+
     window.print();
 
     // Cleanup after print dialog
     setTimeout(() => {
-      document.body.classList.remove('print-vintage', 'print-kraft', 'print-botanical', 'print-minimal-ink');
+      document.body.classList.remove('print-vintage', 'print-kraft', 'print-botanical', 'print-minimal-ink', 'print-vintage-paper');
     }, 1200);
   };
 
@@ -91,15 +102,83 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
 
       // 1. Background Paper
       if (borderStyle === 'kraft') {
-        ctx.fillStyle = '#F5EFEB';
+        ctx.fillStyle = vintagePaperTexture ? '#EFE6DC' : '#F5EFEB';
       } else if (borderStyle === 'botanical') {
-        ctx.fillStyle = '#F8FAF7';
+        ctx.fillStyle = vintagePaperTexture ? '#F2F5ED' : '#F8FAF7';
       } else if (borderStyle === 'minimal') {
-        ctx.fillStyle = '#FFFFFF';
+        ctx.fillStyle = vintagePaperTexture ? '#FAF9F6' : '#FFFFFF';
       } else {
-        ctx.fillStyle = '#FAF7F2';
+        ctx.fillStyle = vintagePaperTexture ? '#F6EFE3' : '#FAF7F2';
       }
       ctx.fillRect(0, 0, width, estimatedHeight);
+
+      // Vintage Paper Texture & Aging Overlays on Canvas
+      if (vintagePaperTexture) {
+        ctx.save();
+        const intensityFactor = textureIntensity === 'antique' ? 1.4 : textureIntensity === 'subtle' ? 0.6 : 1.0;
+
+        // Radial Edge Vignette (Antiqued page patina)
+        const vignetteGrad = ctx.createRadialGradient(
+          width / 2, estimatedHeight / 2, Math.min(width, estimatedHeight) * 0.35,
+          width / 2, estimatedHeight / 2, Math.max(width, estimatedHeight) * 0.72
+        );
+        vignetteGrad.addColorStop(0, 'rgba(250, 247, 242, 0)');
+        vignetteGrad.addColorStop(0.7, `rgba(205, 175, 135, ${0.12 * intensityFactor})`);
+        vignetteGrad.addColorStop(1, `rgba(165, 120, 75, ${0.28 * intensityFactor})`);
+        ctx.fillStyle = vignetteGrad;
+        ctx.fillRect(0, 0, width, estimatedHeight);
+
+        // Edge Sepia Banding
+        const edgeTop = ctx.createLinearGradient(0, 0, 0, 90);
+        edgeTop.addColorStop(0, `rgba(160, 115, 70, ${0.22 * intensityFactor})`);
+        edgeTop.addColorStop(1, 'rgba(160, 115, 70, 0)');
+        ctx.fillStyle = edgeTop;
+        ctx.fillRect(0, 0, width, 90);
+
+        const edgeBottom = ctx.createLinearGradient(0, estimatedHeight - 90, 0, estimatedHeight);
+        edgeBottom.addColorStop(0, 'rgba(160, 115, 70, 0)');
+        edgeBottom.addColorStop(1, `rgba(160, 115, 70, ${0.25 * intensityFactor})`);
+        ctx.fillStyle = edgeBottom;
+        ctx.fillRect(0, estimatedHeight - 90, width, 90);
+
+        // Subtle Random Paper Fiber Flecks
+        ctx.fillStyle = `rgba(135, 95, 60, ${0.08 * intensityFactor})`;
+        for (let i = 0; i < (textureVibe === 'deckle-fiber' ? 450 : 250); i++) {
+          const fx = Math.random() * width;
+          const fy = Math.random() * estimatedHeight;
+          const flen = 2 + Math.random() * 4;
+          ctx.fillRect(fx, fy, flen, 1);
+        }
+
+        // Faux Aged Fold Creases
+        ctx.strokeStyle = `rgba(160, 120, 80, ${0.08 * intensityFactor})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, estimatedHeight * 0.35);
+        ctx.lineTo(width, estimatedHeight * 0.35);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(0, estimatedHeight * 0.68);
+        ctx.lineTo(width, estimatedHeight * 0.68);
+        ctx.stroke();
+
+        // Faux Tea/Coffee Stain Watermark Ring
+        if (textureVibe === 'tea-stain' || textureVibe === 'parchment') {
+          ctx.strokeStyle = `rgba(165, 120, 75, ${0.14 * intensityFactor})`;
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.arc(width - 95, estimatedHeight - 110, 52, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.strokeStyle = `rgba(145, 100, 55, ${0.09 * intensityFactor})`;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(width - 95, estimatedHeight - 110, 48, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        ctx.restore();
+      }
 
       // Subtle Grid Dots for vintage & kraft
       if (borderStyle === 'vintage' || borderStyle === 'kraft') {
@@ -402,7 +481,53 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
             </div>
           </div>
 
-          {/* 2. Content inclusion checkboxes */}
+          {/* 2. Vintage Paper Texture Overlay Settings */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className={`flex items-center gap-2 px-2.5 py-1 rounded-lg border transition-all ${
+              vintagePaperTexture 
+                ? 'bg-amber-50/90 border-amber-300/80 text-amber-950 shadow-2xs' 
+                : 'bg-[#FAF7F2] border-[#EADBCE] text-[#7A7268]'
+            }`}>
+              <label className="flex items-center gap-1.5 cursor-pointer select-none font-semibold text-xs">
+                <input
+                  type="checkbox"
+                  checked={vintagePaperTexture}
+                  onChange={(e) => setVintagePaperTexture(e.target.checked)}
+                  className="rounded border-[#D6CBC0] text-[#C85A32] focus:ring-[#C85A32]"
+                />
+                <Scroll className="w-3.5 h-3.5 text-[#C85A32]" />
+                <span>复古做旧纸纹 (Vintage Paper)</span>
+              </label>
+
+              {vintagePaperTexture && (
+                <div className="flex items-center gap-1.5 pl-2 border-l border-amber-300/70">
+                  <select
+                    value={textureVibe}
+                    onChange={(e) => setTextureVibe(e.target.value as VintageTextureVibe)}
+                    className="bg-white border border-[#EADBCE] rounded px-1.5 py-0.5 text-[11px] text-[#4A423B] focus:outline-hidden"
+                    title="选择复古纸张质感风格"
+                  >
+                    <option value="parchment">📜 羊皮纸纹 (Parchment)</option>
+                    <option value="tea-stain">☕ 茶渍浸润 (Tea-Stained)</option>
+                    <option value="deckle-fiber">🌾 亚麻纤维 (Linen Fiber)</option>
+                  </select>
+
+                  <select
+                    value={textureIntensity}
+                    onChange={(e) => setTextureIntensity(e.target.value as VintageTextureIntensity)}
+                    className="bg-white border border-[#EADBCE] rounded px-1.5 py-0.5 text-[11px] text-[#4A423B] focus:outline-hidden"
+                    title="选择做旧色调与纹理浓度"
+                  >
+                    <option value="subtle">淡雅 (Subtle)</option>
+                    <option value="authentic">标准 (Authentic)</option>
+                    <option value="antique">浓郁沧桑 (Antique)</option>
+                  </select>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 3. Content inclusion checkboxes */}
           <div className="flex flex-wrap items-center gap-3 sm:gap-4">
             <label className="flex items-center gap-1.5 cursor-pointer text-[#2C2723] hover:text-[#C85A32] select-none">
               <input
@@ -472,7 +597,7 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
             </div>
           </div>
 
-          {/* 3. Action Buttons */}
+          {/* 4. Action Buttons */}
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -517,16 +642,163 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
             className={`w-full max-w-[210mm] min-h-[297mm] transition-all duration-200 shadow-xl relative print-page ${
               density === 'compact' ? 'text-xs' : 'text-sm'
             } ${
-              borderStyle === 'kraft'
+              vintagePaperTexture
+                ? borderStyle === 'kraft'
+                  ? 'bg-[#EFE6DC] text-[#261910]'
+                  : borderStyle === 'botanical'
+                  ? 'bg-[#F2F5ED] text-[#1E281C]'
+                  : borderStyle === 'minimal'
+                  ? 'bg-[#FAF9F6] text-[#1A1A1A]'
+                  : 'bg-[#F6EFE3] text-[#2C2723]'
+                : borderStyle === 'kraft'
                 ? 'bg-[#F5EFEB] text-[#261910]'
                 : borderStyle === 'botanical'
                 ? 'bg-[#F8FAF7] text-[#1E281C]'
                 : borderStyle === 'minimal'
                 ? 'bg-white text-[#1A1A1A]'
                 : 'bg-[#FAF7F2] text-[#2C2723]'
-            } p-8 sm:p-12`}
+            } ${vintagePaperTexture ? 'has-vintage-paper' : ''} p-8 sm:p-12`}
             style={{ boxSizing: 'border-box' }}
           >
+            {/* ================= VINTAGE PAPER TEXTURE OVERLAY ================= */}
+            {vintagePaperTexture && (
+              <div 
+                className="vintage-paper-overlay absolute inset-0 pointer-events-none overflow-hidden select-none z-0"
+                aria-hidden="true"
+              >
+                {/* 1. Radial Aging Vignette Gradient (Antiqued sepia perimeter) */}
+                <div 
+                  className={`absolute inset-0 transition-opacity ${
+                    textureIntensity === 'antique' 
+                      ? 'opacity-95' 
+                      : textureIntensity === 'subtle' 
+                        ? 'opacity-45' 
+                        : 'opacity-70'
+                  }`}
+                  style={{
+                    background: 'radial-gradient(ellipse at center, transparent 48%, rgba(200, 165, 125, 0.14) 75%, rgba(160, 115, 70, 0.28) 100%)'
+                  }}
+                />
+
+                {/* 2. Top & Bottom Edge Aging Patina Bands */}
+                <div 
+                  className="absolute top-0 left-0 right-0 h-16 pointer-events-none"
+                  style={{
+                    background: 'linear-gradient(to bottom, rgba(165, 120, 75, 0.18), transparent)'
+                  }}
+                />
+                <div 
+                  className="absolute bottom-0 left-0 right-0 h-16 pointer-events-none"
+                  style={{
+                    background: 'linear-gradient(to top, rgba(165, 120, 75, 0.22), transparent)'
+                  }}
+                />
+                <div 
+                  className="absolute top-0 bottom-0 left-0 w-8 pointer-events-none"
+                  style={{
+                    background: 'linear-gradient(to right, rgba(165, 120, 75, 0.12), transparent)'
+                  }}
+                />
+                <div 
+                  className="absolute top-0 bottom-0 right-0 w-8 pointer-events-none"
+                  style={{
+                    background: 'linear-gradient(to left, rgba(165, 120, 75, 0.12), transparent)'
+                  }}
+                />
+
+                {/* 3. SVG Paper Fiber & Pulp Grain Pattern */}
+                <svg className="absolute inset-0 w-full h-full opacity-60 mix-blend-multiply pointer-events-none">
+                  <defs>
+                    <pattern id="vintage-fiber-tile" width="140" height="140" patternUnits="userSpaceOnUse">
+                      {/* Randomized paper pulp flecks and micro strokes */}
+                      <rect x="14" y="22" width="3" height="1" rx="0.5" fill="#8C6542" opacity="0.18" />
+                      <rect x="85" y="44" width="4" height="1" rx="0.5" fill="#8C6542" opacity="0.15" />
+                      <rect x="52" y="96" width="3.5" height="1" rx="0.5" fill="#8C6542" opacity="0.2" />
+                      <rect x="110" y="118" width="2.5" height="1" rx="0.5" fill="#8C6542" opacity="0.16" />
+                      <circle cx="34" cy="72" r="0.8" fill="#7A5535" opacity="0.22" />
+                      <circle cx="98" cy="18" r="0.7" fill="#7A5535" opacity="0.19" />
+                      <circle cx="124" cy="82" r="0.9" fill="#7A5535" opacity="0.18" />
+                      <circle cx="68" cy="132" r="0.7" fill="#7A5535" opacity="0.21" />
+                      {/* Organic woven fibers */}
+                      <path d="M25 45 Q 32 47, 40 44" stroke="#8C6542" strokeWidth="0.6" fill="none" opacity="0.14" />
+                      <path d="M78 88 Q 85 86, 92 89" stroke="#8C6542" strokeWidth="0.6" fill="none" opacity="0.12" />
+                      <path d="M105 38 Q 112 41, 118 39" stroke="#8C6542" strokeWidth="0.6" fill="none" opacity="0.15" />
+                      {textureVibe === 'deckle-fiber' && (
+                        <>
+                          <path d="M10 110 Q 18 113, 26 109" stroke="#8C6542" strokeWidth="0.75" fill="none" opacity="0.18" />
+                          <path d="M60 20 Q 68 23, 76 19" stroke="#8C6542" strokeWidth="0.75" fill="none" opacity="0.16" />
+                          <circle cx="70" cy="60" r="1.1" fill="#7A5535" opacity="0.24" />
+                        </>
+                      )}
+                    </pattern>
+                  </defs>
+                  <rect width="100%" height="100%" fill="url(#vintage-fiber-tile)" />
+                </svg>
+
+                {/* 4. Subtle Scrapbook Fold / Aging Creases */}
+                <div 
+                  className="absolute left-0 right-0 top-[34%] h-px pointer-events-none opacity-40"
+                  style={{
+                    background: 'linear-gradient(to right, transparent 5%, rgba(255,255,255,0.7) 15%, rgba(140, 100, 60, 0.22) 50%, rgba(255,255,255,0.7) 85%, transparent 95%)'
+                  }}
+                />
+                <div 
+                  className="absolute left-0 right-0 top-[68%] h-px pointer-events-none opacity-35"
+                  style={{
+                    background: 'linear-gradient(to right, transparent 8%, rgba(255,255,255,0.6) 20%, rgba(140, 100, 60, 0.2) 55%, rgba(255,255,255,0.6) 80%, transparent 92%)'
+                  }}
+                />
+
+                {/* 5. Authentic Faux Tea/Coffee Watermark Ring */}
+                {(textureVibe === 'tea-stain' || textureVibe === 'parchment') && (
+                  <div className="absolute -bottom-8 -right-8 w-44 h-44 pointer-events-none opacity-40">
+                    <svg viewBox="0 0 120 120" className="w-full h-full">
+                      {/* Outer tea stain ring */}
+                      <circle 
+                        cx="60" cy="60" r="48" 
+                        fill="none" 
+                        stroke="#A67B4F" 
+                        strokeWidth="2.5" 
+                        strokeDasharray="36 6 18 4 50 8" 
+                        opacity="0.35" 
+                      />
+                      {/* Inner tea bleed watermark */}
+                      <circle 
+                        cx="60" cy="60" r="45" 
+                        fill="rgba(195, 150, 100, 0.04)" 
+                        stroke="#8C6036" 
+                        strokeWidth="0.9" 
+                        strokeDasharray="22 5 12 3" 
+                        opacity="0.25" 
+                      />
+                      {/* Faint splash dots */}
+                      <circle cx="28" cy="38" r="1.5" fill="#8C6036" opacity="0.3" />
+                      <circle cx="92" cy="78" r="2" fill="#8C6036" opacity="0.25" />
+                    </svg>
+                  </div>
+                )}
+
+                {/* 6. Scrapbook Faux Washi Tape Accents (Top corners) */}
+                <div 
+                  className="absolute top-1 left-10 w-24 h-5 pointer-events-none rotate-[-2deg] opacity-75 shadow-xs"
+                  style={{
+                    background: 'rgba(235, 218, 195, 0.75)',
+                    borderLeft: '1px dashed rgba(160, 120, 80, 0.4)',
+                    borderRight: '1px dashed rgba(160, 120, 80, 0.4)',
+                    backdropFilter: 'blur(1px)'
+                  }}
+                />
+                <div 
+                  className="absolute top-1 right-12 w-20 h-5 pointer-events-none rotate-[2.5deg] opacity-75 shadow-xs"
+                  style={{
+                    background: 'rgba(235, 218, 195, 0.75)',
+                    borderLeft: '1px dashed rgba(160, 120, 80, 0.4)',
+                    borderRight: '1px dashed rgba(160, 120, 80, 0.4)',
+                    backdropFilter: 'blur(1px)'
+                  }}
+                />
+              </div>
+            )}
             {/* ================= BORDER DECORATION OVERLAYS ================= */}
 
             {/* 1. Vintage Double Border & Filigree Corner Ornaments */}
@@ -634,8 +906,11 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
               </>
             )}
 
-            {/* ================= HEADER SECTION ================= */}
-            <div className="flex items-center justify-between border-b-2 border-[#C85A32]/70 pb-3 mb-5">
+            {/* ================= RECIPE SHEET CONTENT LAYER ================= */}
+            <div className="relative z-10">
+
+              {/* ================= HEADER SECTION ================= */}
+              <div className="flex items-center justify-between border-b-2 border-[#C85A32]/70 pb-3 mb-5">
               <div className="flex items-center gap-2">
                 <span className={`px-2.5 py-0.5 text-white text-[10px] font-mono font-bold uppercase tracking-wider rounded-xs ${
                   borderStyle === 'botanical' ? 'bg-[#5F7A4D]' : borderStyle === 'minimal' ? 'bg-neutral-900' : 'bg-[#C85A32]'
@@ -1034,6 +1309,8 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
             <div className="pt-6 border-t border-[#EADBCE] text-center text-xs text-[#9A9085] flex flex-col items-center gap-1">
               <span className="font-serif tracking-wider">—— 食味手记 · 私房烹饪手帐 ——</span>
               <span className="text-[10px]">记录每一次与美食相遇的幸福时光 · 宜烹饪 宜欢聚 · 打印导出时间：{new Date().toLocaleDateString('zh-CN')}</span>
+            </div>
+
             </div>
 
           </div>

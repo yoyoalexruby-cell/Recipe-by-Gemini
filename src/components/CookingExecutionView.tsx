@@ -5,14 +5,14 @@ import {
   Sparkles, ExternalLink, ChefHat, Clock, Flame, 
   Timer, ShoppingCart, ArrowRight, RotateCcw, Calendar,
   Utensils, BookOpen, AlertCircle, Bell, Settings, ShoppingBag,
-  Volume2, Mic
+  Volume2, Mic, Play, Pause, VolumeX, SkipForward, SkipBack
 } from 'lucide-react';
 import { VideoPlayer } from './VideoPlayer';
 import { MarkCookingModal } from './MarkCookingModal';
 import { markRecipeCookedOnDate } from '../utils/cookingLogStorage';
 import { ShoppingListModal } from './ShoppingListModal';
 import { QuickPurchaseModal } from './QuickPurchaseModal';
-import { CookingVoiceAssistant } from './CookingVoiceAssistant';
+import { CookingVoiceAssistant, CookingVoiceAssistantHandle } from './CookingVoiceAssistant';
 import { PurchaseItem } from '../utils/shoppingPlatforms';
 import { UserProfile } from '../types/auth';
 
@@ -90,6 +90,38 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
   // Active Timer Step Association & Push State
   const [activeTimerStepId, setActiveTimerStepId] = useState<string | null>(null);
   const [timerToast, setTimerToast] = useState<string | null>(null);
+
+  // Voice Guidance (Web Speech API) integration
+  const voiceAssistantRef = useRef<CookingVoiceAssistantHandle | null>(null);
+  const voiceAssistantPanelRef = useRef<HTMLDivElement | null>(null);
+  const [voiceState, setVoiceState] = useState<{ isSpeaking: boolean; isPaused: boolean; isListening: boolean }>({
+    isSpeaking: false,
+    isPaused: false,
+    isListening: false
+  });
+
+  const handleToggleVoiceGuidance = () => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+      alert('抱歉，当前浏览器环境暂不支持 Web Speech API 语音朗读，建议使用 Chrome / Edge / Safari 浏览器体验下厨免动手语音引导！');
+      return;
+    }
+    if (!activeRecipe || !activeRecipe.steps || activeRecipe.steps.length === 0) {
+      alert('当前菜谱暂无制作步骤，无法启动语音引导。');
+      return;
+    }
+    if (voiceState.isSpeaking) {
+      voiceAssistantRef.current?.pauseGuidance();
+    } else if (voiceState.isPaused) {
+      voiceAssistantRef.current?.resumeGuidance();
+    } else {
+      voiceAssistantRef.current?.startGuidance(currentSpokenStepIndex);
+      if (stepCardRefs.current[currentSpokenStepIndex]) {
+        stepCardRefs.current[currentSpokenStepIndex]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else if (voiceAssistantPanelRef.current) {
+        voiceAssistantPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+  };
 
   const handleStartStepTimer = (st: CookingStep, idx: number) => {
     const duration = st.durationMinutes || 5;
@@ -247,10 +279,42 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
             </p>
           </div>
 
-          <div className="flex items-center gap-2 self-start md:self-auto shrink-0">
+          <div className="flex items-center gap-2.5 self-start md:self-auto shrink-0 flex-wrap">
+            {activeRecipe && activeRecipe.steps && activeRecipe.steps.length > 0 && (
+              <button
+                type="button"
+                onClick={handleToggleVoiceGuidance}
+                className={`min-h-[44px] px-3.5 py-2 text-xs font-bold rounded-xl border transition-all flex items-center gap-2 shadow-2xs ${
+                  voiceState.isSpeaking
+                    ? 'bg-[#C85A32] text-white border-[#A04523] animate-pulse ring-2 ring-[#C85A32]/30'
+                    : voiceState.isPaused
+                      ? 'bg-amber-100 text-amber-900 border-amber-300'
+                      : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border-emerald-300/80 hover:border-emerald-400'
+                }`}
+                title={voiceState.isSpeaking ? '暂停语音引导' : voiceState.isPaused ? '继续语音引导' : '启动 Web Speech API 步骤语音自动朗读'}
+              >
+                {voiceState.isSpeaking ? (
+                  <>
+                    <Pause className="w-4 h-4 shrink-0" />
+                    <span>播报中 · 第 {currentSpokenStepIndex + 1} 步</span>
+                  </>
+                ) : voiceState.isPaused ? (
+                  <>
+                    <Play className="w-4 h-4 shrink-0" />
+                    <span>继续语音引导</span>
+                  </>
+                ) : (
+                  <>
+                    <Volume2 className="w-4 h-4 shrink-0 text-[#5F7A4D]" />
+                    <span>语音引导 (免动手听步骤)</span>
+                  </>
+                )}
+              </button>
+            )}
+
             <button
               onClick={handleResetChecklist}
-              className="px-3 py-1.5 text-xs font-medium text-[#7A7268] hover:text-[#2C2723] bg-[#FAF7F2] hover:bg-[#EADBCE]/50 border border-[#EADBCE] rounded-lg transition-colors flex items-center gap-1.5"
+              className="min-h-[44px] px-3 py-2 text-xs font-medium text-[#7A7268] hover:text-[#2C2723] bg-[#FAF7F2] hover:bg-[#EADBCE]/50 border border-[#EADBCE] rounded-xl transition-colors flex items-center gap-1.5"
               title="重置当前进度"
             >
               <RotateCcw className="w-3.5 h-3.5" />
@@ -259,7 +323,7 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
             {activeRecipe && (
               <button
                 onClick={() => onOpenRecipe(activeRecipe)}
-                className="px-3.5 py-1.5 text-xs font-semibold text-[#C85A32] bg-[#FAF3EC] hover:bg-[#C85A32] hover:text-white border border-[#C85A32]/40 rounded-lg transition-all flex items-center gap-1.5"
+                className="min-h-[44px] px-3.5 py-2 text-xs font-semibold text-[#C85A32] bg-[#FAF3EC] hover:bg-[#C85A32] hover:text-white border border-[#C85A32]/40 rounded-xl transition-all flex items-center gap-1.5"
               >
                 <BookOpen className="w-3.5 h-3.5" />
                 <span>查看完整食谱</span>
@@ -750,6 +814,38 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
             </div>
 
             <div className="flex items-center gap-2 flex-wrap justify-end">
+              {activeRecipe && activeRecipe.steps && activeRecipe.steps.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleToggleVoiceGuidance}
+                  className={`min-h-[36px] px-2.5 py-1 text-xs font-semibold rounded-lg border transition-all flex items-center gap-1.5 shadow-2xs ${
+                    voiceState.isSpeaking
+                      ? 'bg-[#C85A32] text-white border-[#A04523] animate-pulse ring-2 ring-[#C85A32]/25'
+                      : voiceState.isPaused
+                        ? 'bg-amber-100 text-amber-900 border-amber-300'
+                        : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border-emerald-300/80 hover:border-emerald-400'
+                  }`}
+                  title={voiceState.isSpeaking ? '暂停语音引导' : voiceState.isPaused ? '继续语音引导' : '启动 Web Speech API 步骤语音自动朗读'}
+                >
+                  {voiceState.isSpeaking ? (
+                    <>
+                      <Pause className="w-3.5 h-3.5 shrink-0" />
+                      <span>暂停播报</span>
+                    </>
+                  ) : voiceState.isPaused ? (
+                    <>
+                      <Play className="w-3.5 h-3.5 shrink-0" />
+                      <span>继续播报</span>
+                    </>
+                  ) : (
+                    <>
+                      <Volume2 className="w-3.5 h-3.5 shrink-0 text-[#5F7A4D]" />
+                      <span>语音引导</span>
+                    </>
+                  )}
+                </button>
+              )}
+
               {activeRecipe && activeRecipe.steps.some(s => (s.durationMinutes || 0) > 0) && (
                 <button
                   type="button"
@@ -763,7 +859,7 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
                       handleStartStepTimer(curStep, idx >= 0 ? idx : 0);
                     }
                   }}
-                  className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300/80 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs"
+                  className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300/80 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs min-h-[36px]"
                   title="一键启动当前步骤或首个定时推送的悬浮计时器"
                 >
                   <Bell className="w-3.5 h-3.5 text-amber-700 fill-amber-500/20" />
@@ -773,7 +869,7 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
                 </button>
               )}
 
-              <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded-full ${
+              <span className={`text-xs font-mono font-bold px-2 py-1 rounded-full ${
                 isAllStepsFinished 
                   ? 'bg-emerald-100 text-emerald-800' 
                   : 'bg-amber-100 text-amber-800'
@@ -785,21 +881,25 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
 
           {/* Voice Broadcast & Hands-Free Interaction Panel */}
           {activeRecipe && activeRecipe.steps.length > 0 && (
-            <CookingVoiceAssistant
-              recipeTitle={activeRecipe.title}
-              steps={activeRecipe.steps}
-              currentStepIndex={currentSpokenStepIndex}
-              onStepChange={(newIdx) => setCurrentSpokenStepIndex(newIdx)}
-              onToggleStepCheck={toggleStepCheck}
-              checkedSteps={checkedSteps}
-              onStartTimer={onStartTimer}
-              onFinishAll={() => {
-                const allChecked: Record<string, boolean> = {};
-                activeRecipe.steps.forEach(s => { allChecked[s.id] = true; });
-                setCheckedSteps(allChecked);
-                setIsMarkModalOpen(true);
-              }}
-            />
+            <div ref={voiceAssistantPanelRef}>
+              <CookingVoiceAssistant
+                ref={voiceAssistantRef}
+                onVoiceStateChange={setVoiceState}
+                recipeTitle={activeRecipe.title}
+                steps={activeRecipe.steps}
+                currentStepIndex={currentSpokenStepIndex}
+                onStepChange={(newIdx) => setCurrentSpokenStepIndex(newIdx)}
+                onToggleStepCheck={toggleStepCheck}
+                checkedSteps={checkedSteps}
+                onStartTimer={onStartTimer}
+                onFinishAll={() => {
+                  const allChecked: Record<string, boolean> = {};
+                  activeRecipe.steps.forEach(s => { allChecked[s.id] = true; });
+                  setCheckedSteps(allChecked);
+                  setIsMarkModalOpen(true);
+                }}
+              />
+            </div>
           )}
 
           {/* Steps Timeline Checklist */}
@@ -1055,6 +1155,100 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
           items={executionPurchaseItems}
           sourceTitle={`制作工作台 · 《${activeRecipe.title}》(${servings}人份)`}
         />
+      )}
+
+      {/* Floating Voice Guidance Controller Pill (Active when speaking or paused) */}
+      {(voiceState.isSpeaking || voiceState.isPaused) && activeRecipe && activeRecipe.steps && (
+        <aside
+          aria-label="正在播放的语音引导控制栏"
+          className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-40 bg-[#2C2723]/95 backdrop-blur-md text-amber-50 px-4 py-2.5 rounded-2xl border border-[#EADBCE]/30 shadow-2xl flex items-center gap-3 animate-fade-in max-w-[92vw] sm:max-w-md"
+        >
+          {/* Animated Speaker indicator */}
+          <div className="flex items-center gap-2 shrink-0">
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${voiceState.isSpeaking ? 'bg-[#C85A32] text-white animate-pulse' : 'bg-[#3E3832] text-amber-200'}`}>
+              {voiceState.isSpeaking ? <Volume2 className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
+            </div>
+          </div>
+
+          {/* Current Step Description */}
+          <div 
+            onClick={() => {
+              if (stepCardRefs.current[currentSpokenStepIndex]) {
+                stepCardRefs.current[currentSpokenStepIndex]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }
+            }}
+            className="flex-1 min-w-0 cursor-pointer group"
+            title="点击跳转至该步骤位置"
+          >
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-mono uppercase tracking-wider text-amber-300 font-bold">
+                {voiceState.isSpeaking ? '正在语音朗读' : '已暂停'} · 第 {currentSpokenStepIndex + 1}/{activeRecipe.steps.length} 步
+              </span>
+            </div>
+            <p className="text-xs font-medium truncate text-amber-100 group-hover:text-amber-200">
+              {activeRecipe.steps[currentSpokenStepIndex]?.title || '烹饪步骤'}
+            </p>
+          </div>
+
+          {/* Quick controls */}
+          <div className="flex items-center gap-1 shrink-0">
+            {/* Prev Step */}
+            <button
+              type="button"
+              onClick={() => {
+                const prev = Math.max(0, currentSpokenStepIndex - 1);
+                setCurrentSpokenStepIndex(prev);
+                voiceAssistantRef.current?.startGuidance(prev);
+              }}
+              disabled={currentSpokenStepIndex === 0}
+              className="p-1.5 text-amber-200 hover:text-white disabled:opacity-30 disabled:hover:text-amber-200 rounded-lg hover:bg-white/10 transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center"
+              title="上一步"
+            >
+              <SkipBack className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Play/Pause */}
+            <button
+              type="button"
+              onClick={handleToggleVoiceGuidance}
+              className={`p-2 rounded-xl transition-all min-h-[40px] min-w-[40px] flex items-center justify-center ${
+                voiceState.isSpeaking 
+                  ? 'bg-amber-200 text-[#2C2723] hover:bg-amber-100 font-bold' 
+                  : 'bg-[#C85A32] text-white hover:bg-[#B34C26]'
+              }`}
+              title={voiceState.isSpeaking ? '暂停' : '继续'}
+            >
+              {voiceState.isSpeaking ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+            </button>
+
+            {/* Next Step */}
+            <button
+              type="button"
+              onClick={() => {
+                const next = Math.min(activeRecipe.steps.length - 1, currentSpokenStepIndex + 1);
+                setCurrentSpokenStepIndex(next);
+                voiceAssistantRef.current?.startGuidance(next);
+              }}
+              disabled={currentSpokenStepIndex >= activeRecipe.steps.length - 1}
+              className="p-1.5 text-amber-200 hover:text-white disabled:opacity-30 disabled:hover:text-amber-200 rounded-lg hover:bg-white/10 transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center"
+              title="下一步"
+            >
+              <SkipForward className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Close / Stop */}
+            <button
+              type="button"
+              onClick={() => {
+                voiceAssistantRef.current?.stopGuidance();
+              }}
+              className="p-1.5 text-amber-400/80 hover:text-rose-300 rounded-lg hover:bg-white/10 transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center"
+              title="结束语音引导"
+            >
+              <VolumeX className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </aside>
       )}
 
       {/* Completion Toast */}

@@ -3,6 +3,7 @@ import { Recipe } from '../types/recipe';
 import { FoodArtFallback } from './IllustrationPresets';
 import { Clock, Users, Star, Heart, Share2, Flame } from 'lucide-react';
 import { estimateRecipeCalories } from '../utils/nutritionCalculator';
+import { useI18n } from '../i18n/context';
 
 interface RecipeCardProps {
   recipe: Recipe;
@@ -17,6 +18,7 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({
   onShare,
   onToggleFavorite
 }) => {
+  const { t, getCategoryLabel, getSubcategoryLabel, formatMinutes, formatServings, getWeatherLabel } = useI18n();
   // Determine washi tape color accent based on category
   const getTapeStyle = () => {
     switch (recipe.category) {
@@ -46,7 +48,7 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({
       {/* Decorative Washi Tape strip across top */}
       <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 pointer-events-none">
         <div className={`washi-tape px-4 py-0.5 text-[11px] font-mono tracking-wider uppercase rounded-xs ${getTapeStyle()}`}>
-          {recipe.cuisine || recipe.category}
+          {recipe.cuisine || getCategoryLabel(recipe.category)}
         </div>
       </div>
 
@@ -72,7 +74,7 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({
                 ? 'bg-rose-50 text-rose-500 hover:bg-rose-100' 
                 : 'bg-black/30 text-white hover:bg-black/50'
             }`}
-            title={recipe.isFavorite ? '已收藏' : '加入收藏'}
+            title={recipe.isFavorite ? t('category.favorites', 'Favorites') : t('action.filter', 'Favorite')}
           >
             <Heart className={`w-4 h-4 ${recipe.isFavorite ? 'fill-current' : ''}`} />
           </button>
@@ -80,7 +82,7 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({
 
         {recipe.weatherStamp && (
           <div className="absolute bottom-2.5 left-3 text-[11px] text-white/90 bg-black/40 backdrop-blur-sm px-2 py-0.5 rounded">
-            {recipe.weatherStamp}
+            {getWeatherLabel(recipe.weatherStamp)}
           </div>
         )}
       </div>
@@ -90,27 +92,27 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({
         <div>
           {/* Unboxed Metadata (Zero-pill discipline) */}
           <div className="flex items-center gap-1.5 text-xs text-[#7A7268] mb-1.5 flex-wrap">
-            <span className="font-medium text-[#2C2723]">{recipe.category}</span>
+            <span className="font-medium text-[#2C2723]">{getCategoryLabel(recipe.category)}</span>
             {recipe.subCategory && (
               <>
                 <span aria-hidden="true" className="text-[#C85A32]/50">/</span>
-                <span className="text-[#C85A32] font-semibold">{recipe.subCategory}</span>
+                <span className="text-[#C85A32] font-semibold">{getSubcategoryLabel(recipe.subCategory)}</span>
               </>
             )}
             <span aria-hidden="true" className="text-[#D1C3A5]">·</span>
             <span className="flex items-center gap-1">
               <Clock className="w-3.5 h-3.5" />
-              <span className="tabular-nums font-mono">{totalTime}</span>分钟
+              <span className="tabular-nums font-mono">{formatMinutes(totalTime)}</span>
             </span>
             <span aria-hidden="true" className="text-[#D1C3A5]">·</span>
             <span className="flex items-center gap-1">
               <Users className="w-3.5 h-3.5" />
-              <span className="tabular-nums font-mono">{recipe.baseServings}</span>人份
+              <span className="tabular-nums font-mono">{formatServings(recipe.baseServings)}</span>
             </span>
             {perServingCalories > 0 && (
               <>
                 <span aria-hidden="true" className="text-[#D1C3A5]">·</span>
-                <span className="flex items-center gap-1 text-[#C85A32]" title="单人份预估热量">
+                <span className="flex items-center gap-1 text-[#C85A32]" title={t('recipe.calories', 'Est. Calories')}>
                   <Flame className="w-3.5 h-3.5" />
                   <span className="tabular-nums font-mono font-medium">{perServingCalories}</span>
                   <span className="text-[10px]">kcal</span>
@@ -126,7 +128,7 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({
 
           {/* Dish Subtitle / Memoir */}
           <p className="text-xs text-[#7A7268] line-clamp-2 leading-relaxed">
-            {recipe.subtitle || '在烟火与香气中，记录下这一味独属于生活的温度。'}
+            {recipe.subtitle || 'Every dish is a warm handwritten letter to life and flavor.'}
           </p>
         </div>
 
@@ -138,7 +140,7 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({
               {recipe.review?.ratings?.taste || 5}.0
             </span>
             <span className="text-[11px] text-[#9A9085]">
-              ({recipe.ingredients?.length || 0}样食材)
+              ({recipe.ingredients?.length || 0} {t('recipe.ingredients', 'items')})
             </span>
           </div>
 
@@ -154,7 +156,7 @@ export const RecipeCard: React.FC<RecipeCardProps> = ({
                 onShare(recipe);
               }}
               className="p-1 rounded text-[#9A9085] hover:text-[#C85A32] hover:bg-[#FAF7F2] transition-colors"
-              title="生成分享手帐卡"
+              title={t('action.share', 'Share Card')}
             >
               <Share2 className="w-4 h-4" />
             </button>
