@@ -207,10 +207,10 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
           <button
             onClick={() => setIsExportPDFOpen(true)}
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-[#C85A32] hover:bg-[#B34C26] rounded-md transition-all shadow-2xs active:scale-95"
-            title={t('detail.printJournal', '生成打印版手帐')}
+            title={t('detail.printJournal', '打印为手帐')}
           >
             <Printer className="w-3.5 h-3.5" />
-            <span>{t('detail.printJournal', '生成打印版手帐')}</span>
+            <span>{t('detail.printJournal', '打印为手帐')}</span>
           </button>
 
           <button

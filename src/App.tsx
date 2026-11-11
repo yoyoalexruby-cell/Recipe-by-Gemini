@@ -806,6 +806,7 @@ export default function App() {
         <UserProfileModal
           isOpen={isProfileModalOpen}
           user={currentUser}
+          recipes={recipes}
           userRecipeCount={recipes.length}
           publicRecipeCount={publicRecipeCount}
           totalLikesReceived={totalLikesReceived}

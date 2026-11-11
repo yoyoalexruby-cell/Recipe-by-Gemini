@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { UserProfile, PRESET_AVATARS } from '../types/auth';
+import { Recipe } from '../types/recipe';
 import { updateCurrentUserProfile, logoutUser } from '../utils/authService';
 import { compressImageFile } from '../utils/storage';
 import { 
@@ -9,15 +10,17 @@ import {
   checkIsDailyCheckedIn 
 } from '../utils/membershipService';
 import { useI18n } from '../i18n/context';
+import { ChefResumeModal } from './ChefResumeModal';
 import { 
   X, User, Camera, LogOut, Check, Heart, BookOpen, 
   Award, Trophy, Star, Sparkles, ChevronRight, Gift, Flame,
-  Shield, Zap, CheckCircle2, Circle, ArrowUpRight
+  Shield, Zap, CheckCircle2, Circle, ArrowUpRight, FileText, Image as ImageIcon
 } from 'lucide-react';
 
 interface UserProfileModalProps {
   isOpen: boolean;
   user: UserProfile;
+  recipes?: Recipe[];
   userRecipeCount: number;
   publicRecipeCount: number;
   totalLikesReceived: number;
@@ -31,6 +34,7 @@ interface UserProfileModalProps {
 export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   isOpen,
   user,
+  recipes = [],
   userRecipeCount,
   publicRecipeCount,
   totalLikesReceived,
@@ -44,6 +48,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 
   // Active view tab inside profile modal: 'level' (等级与任务) or 'edit' (资料编辑)
   const [activeTab, setActiveTab] = useState<'level' | 'edit'>('level');
+  const [isResumeModalOpen, setIsResumeModalOpen] = useState(false);
 
   // Form State
   const [displayName, setDisplayName] = useState(user.displayName);
@@ -207,20 +212,32 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Daily Check-in Action Button */}
-                  <button
-                    type="button"
-                    onClick={handleCheckin}
-                    disabled={isCheckedIn}
-                    className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm ${
-                      isCheckedIn
-                        ? 'bg-white/10 text-amber-300/60 border border-white/10 cursor-default'
-                        : 'bg-gradient-to-r from-amber-400 to-amber-500 text-stone-950 hover:brightness-105 active:scale-95'
-                    }`}
-                  >
-                    <Flame className="w-3.5 h-3.5" />
-                    <span>{isCheckedIn ? (language === 'zh-CN' ? '今日已签到' : 'Checked In') : (language === 'zh-CN' ? '每日签到 +20' : 'Daily +20 EXP')}</span>
-                  </button>
+                  {/* Action Buttons: Check-in & Chef Resume */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsResumeModalOpen(true)}
+                      className="px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm bg-gradient-to-r from-amber-200 to-amber-100 text-stone-900 hover:brightness-105 active:scale-95 border border-amber-300"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                      <span>{language === 'zh-CN' ? '生成厨神履历' : 'Chef Resume'}</span>
+                    </button>
+
+                    {/* Daily Check-in Action Button */}
+                    <button
+                      type="button"
+                      onClick={handleCheckin}
+                      disabled={isCheckedIn}
+                      className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm ${
+                        isCheckedIn
+                          ? 'bg-white/10 text-amber-300/60 border border-white/10 cursor-default'
+                          : 'bg-gradient-to-r from-amber-400 to-amber-500 text-stone-950 hover:brightness-105 active:scale-95'
+                      }`}
+                    >
+                      <Flame className="w-3.5 h-3.5" />
+                      <span>{isCheckedIn ? (language === 'zh-CN' ? '已签到' : 'Checked In') : (language === 'zh-CN' ? '签到 +20' : '+20 EXP')}</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Level EXP Progress Bar */}
@@ -245,6 +262,41 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                       : `${Math.max(0, levelInfo.nextLevelExp - levelInfo.currentExp)} EXP to next level`}
                   </p>
                 </div>
+              </div>
+
+              {/* Highlighting Chef Resume Poster Entry Card */}
+              <div 
+                onClick={() => setIsResumeModalOpen(true)}
+                className="bg-gradient-to-r from-amber-50 via-orange-50 to-amber-100/70 p-3.5 rounded-2xl border border-amber-300/80 shadow-2xs hover:shadow-md transition-all cursor-pointer flex items-center justify-between group active:scale-[0.99]"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#C85A32] to-[#A8421D] text-white flex items-center justify-center shadow-sm shrink-0">
+                    <Award className="w-5 h-5 text-amber-200" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <h4 className="font-bold text-xs text-[#2C2723]">
+                        {language === 'zh-CN' ? '我的厨神履历档案 · 分享海报' : 'My Master Chef Resume Poster'}
+                      </h4>
+                      <span className="px-1.5 py-0.2 rounded text-[9px] bg-red-500 text-white font-bold animate-pulse">
+                        HOT
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[#7A7268] mt-0.5">
+                      {language === 'zh-CN' 
+                        ? '自动聚合手帐数量、等级头衔、解锁勋章与代表作，一键存相册' 
+                        : 'Generate aesthetic scrapbook poster with medals & signature dishes'}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="px-3 py-1.5 bg-[#C85A32] text-white rounded-xl text-xs font-bold shrink-0 flex items-center gap-1 group-hover:bg-[#B34C26] transition-colors shadow-2xs"
+                >
+                  <span>{language === 'zh-CN' ? '立即生成' : 'Generate'}</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
               </div>
 
               {/* Stats Counters */}
@@ -506,6 +558,16 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
         )}
 
       </div>
+
+      {/* Chef Resume High-Res Poster Modal */}
+      <ChefResumeModal
+        isOpen={isResumeModalOpen}
+        onClose={() => setIsResumeModalOpen(false)}
+        user={user}
+        recipes={recipes}
+        levelInfo={levelInfo}
+        totalLikesReceived={totalLikesReceived}
+      />
     </div>
   );
 };

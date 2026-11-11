@@ -97,7 +97,7 @@ export const zhTranslations: Record<TranslationKey, string> = {
   'detail.shareLink': '🔗 分享链接',
   'detail.markCooked': '打卡下厨',
   'detail.makeCard': '制作手帐卡',
-  'detail.printJournal': '生成打印版手帐',
+  'detail.printJournal': '打印为手帐',
   'detail.edit': '编辑',
   'detail.delete': '删除',
   'detail.confirmDelete': '确定要从手帐中移除此道菜谱吗？',

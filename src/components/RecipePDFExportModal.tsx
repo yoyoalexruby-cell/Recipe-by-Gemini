@@ -3,9 +3,10 @@ import { Recipe, Ingredient } from '../types/recipe';
 import { 
   Printer, Download, X, Check, Image as ImageIcon, Sparkles, 
   Clock, Flame, ChefHat, Users, Star, Heart, AlertTriangle, 
-  Tag, Calendar, Camera, BookOpen, Layers, Feather, Stamp, Scroll, Coffee
+  Tag, Calendar, Camera, BookOpen, Layers, Feather, Stamp, Scroll, Coffee, RefreshCw
 } from 'lucide-react';
 import { estimateRecipeCalories } from '../utils/nutritionCalculator';
+import { toPng } from 'html-to-image';
 
 interface RecipePDFExportModalProps {
   isOpen: boolean;
@@ -17,6 +18,7 @@ interface RecipePDFExportModalProps {
 export type JournalBorderStyle = 'vintage' | 'kraft' | 'botanical' | 'minimal';
 export type VintageTextureVibe = 'parchment' | 'tea-stain' | 'deckle-fiber';
 export type VintageTextureIntensity = 'subtle' | 'authentic' | 'antique';
+export type PhotoLayoutMode = 'hero' | 'collage' | 'polaroid-grid' | 'filmstrip';
 
 export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
   isOpen,
@@ -26,6 +28,7 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
 }) => {
   // Border & Typesetting style choices
   const [borderStyle, setBorderStyle] = useState<JournalBorderStyle>('vintage');
+  const [photoLayout, setPhotoLayout] = useState<PhotoLayoutMode>('hero');
   const [includeStepPhotos, setIncludeStepPhotos] = useState(true);
   const [includeGallery, setIncludeGallery] = useState(true);
   const [includeReview, setIncludeReview] = useState(true);
@@ -85,298 +88,52 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
     }, 1200);
   };
 
-  // Export as high-res PNG long image using Canvas
+  // Export as high-res PNG long image directly from the DOM sheet (capturing cover photo, step photos, gallery and textures)
   const handleExportImage = async () => {
+    if (!printSheetRef.current) return;
     try {
       setIsExportingImage(true);
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
 
-      const width = 960;
-      const stepsHeight = recipe.steps.length * (includeStepPhotos ? 145 : 85);
-      const estimatedHeight = Math.max(1400, 880 + stepsHeight + (includeReview ? 340 : 0));
-      
-      canvas.width = width;
-      canvas.height = estimatedHeight;
+      // Pre-load all images inside the sheet to avoid blank frames
+      const imgElements = printSheetRef.current.querySelectorAll('img');
+      await Promise.all(
+        Array.from(imgElements).map((img) => {
+          if (img.complete) return Promise.resolve();
+          return new Promise((resolve) => {
+            img.onload = () => resolve(true);
+            img.onerror = () => resolve(true); // Don't block export if one fails
+          });
+        })
+      );
 
-      // 1. Background Paper
-      if (borderStyle === 'kraft') {
-        ctx.fillStyle = vintagePaperTexture ? '#EFE6DC' : '#F5EFEB';
-      } else if (borderStyle === 'botanical') {
-        ctx.fillStyle = vintagePaperTexture ? '#F2F5ED' : '#F8FAF7';
-      } else if (borderStyle === 'minimal') {
-        ctx.fillStyle = vintagePaperTexture ? '#FAF9F6' : '#FFFFFF';
-      } else {
-        ctx.fillStyle = vintagePaperTexture ? '#F6EFE3' : '#FAF7F2';
-      }
-      ctx.fillRect(0, 0, width, estimatedHeight);
-
-      // Vintage Paper Texture & Aging Overlays on Canvas
-      if (vintagePaperTexture) {
-        ctx.save();
-        const intensityFactor = textureIntensity === 'antique' ? 1.4 : textureIntensity === 'subtle' ? 0.6 : 1.0;
-
-        // Radial Edge Vignette (Antiqued page patina)
-        const vignetteGrad = ctx.createRadialGradient(
-          width / 2, estimatedHeight / 2, Math.min(width, estimatedHeight) * 0.35,
-          width / 2, estimatedHeight / 2, Math.max(width, estimatedHeight) * 0.72
-        );
-        vignetteGrad.addColorStop(0, 'rgba(250, 247, 242, 0)');
-        vignetteGrad.addColorStop(0.7, `rgba(205, 175, 135, ${0.12 * intensityFactor})`);
-        vignetteGrad.addColorStop(1, `rgba(165, 120, 75, ${0.28 * intensityFactor})`);
-        ctx.fillStyle = vignetteGrad;
-        ctx.fillRect(0, 0, width, estimatedHeight);
-
-        // Edge Sepia Banding
-        const edgeTop = ctx.createLinearGradient(0, 0, 0, 90);
-        edgeTop.addColorStop(0, `rgba(160, 115, 70, ${0.22 * intensityFactor})`);
-        edgeTop.addColorStop(1, 'rgba(160, 115, 70, 0)');
-        ctx.fillStyle = edgeTop;
-        ctx.fillRect(0, 0, width, 90);
-
-        const edgeBottom = ctx.createLinearGradient(0, estimatedHeight - 90, 0, estimatedHeight);
-        edgeBottom.addColorStop(0, 'rgba(160, 115, 70, 0)');
-        edgeBottom.addColorStop(1, `rgba(160, 115, 70, ${0.25 * intensityFactor})`);
-        ctx.fillStyle = edgeBottom;
-        ctx.fillRect(0, estimatedHeight - 90, width, 90);
-
-        // Subtle Random Paper Fiber Flecks
-        ctx.fillStyle = `rgba(135, 95, 60, ${0.08 * intensityFactor})`;
-        for (let i = 0; i < (textureVibe === 'deckle-fiber' ? 450 : 250); i++) {
-          const fx = Math.random() * width;
-          const fy = Math.random() * estimatedHeight;
-          const flen = 2 + Math.random() * 4;
-          ctx.fillRect(fx, fy, flen, 1);
-        }
-
-        // Faux Aged Fold Creases
-        ctx.strokeStyle = `rgba(160, 120, 80, ${0.08 * intensityFactor})`;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(0, estimatedHeight * 0.35);
-        ctx.lineTo(width, estimatedHeight * 0.35);
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.moveTo(0, estimatedHeight * 0.68);
-        ctx.lineTo(width, estimatedHeight * 0.68);
-        ctx.stroke();
-
-        // Faux Tea/Coffee Stain Watermark Ring
-        if (textureVibe === 'tea-stain' || textureVibe === 'parchment') {
-          ctx.strokeStyle = `rgba(165, 120, 75, ${0.14 * intensityFactor})`;
-          ctx.lineWidth = 2.5;
-          ctx.beginPath();
-          ctx.arc(width - 95, estimatedHeight - 110, 52, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.strokeStyle = `rgba(145, 100, 55, ${0.09 * intensityFactor})`;
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.arc(width - 95, estimatedHeight - 110, 48, 0, Math.PI * 2);
-          ctx.stroke();
-        }
-
-        ctx.restore();
-      }
-
-      // Subtle Grid Dots for vintage & kraft
-      if (borderStyle === 'vintage' || borderStyle === 'kraft') {
-        ctx.fillStyle = borderStyle === 'kraft' ? '#E5DCce' : '#EBE2D5';
-        for (let x = 24; x < width; x += 26) {
-          for (let y = 24; y < estimatedHeight; y += 26) {
-            ctx.beginPath();
-            ctx.arc(x, y, 1, 0, Math.PI * 2);
-            ctx.fill();
+      // Render crisp retina PNG using html-to-image
+      const dataUrl = await toPng(printSheetRef.current, {
+        cacheBust: true,
+        pixelRatio: 2,
+        quality: 0.98,
+        filter: (node) => {
+          // Do not export modal control bars or elements tagged no-print
+          if (node instanceof HTMLElement && node.classList.contains('no-print')) {
+            return false;
           }
-        }
-      }
-
-      // Outer Decorative Border
-      if (borderStyle === 'minimal') {
-        ctx.strokeStyle = '#1A1A1A';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(24, 24, width - 48, estimatedHeight - 48);
-        ctx.strokeStyle = '#CCCCCC';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(30, 30, width - 60, estimatedHeight - 60);
-      } else if (borderStyle === 'kraft') {
-        ctx.strokeStyle = '#BFA98F';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([8, 6]);
-        ctx.strokeRect(24, 24, width - 48, estimatedHeight - 48);
-        ctx.setLineDash([]);
-      } else if (borderStyle === 'botanical') {
-        ctx.strokeStyle = '#5F7A4D';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(24, 24, width - 48, estimatedHeight - 48);
-        ctx.strokeStyle = '#D1DCC8';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(30, 30, width - 60, estimatedHeight - 60);
-      } else {
-        // Classic vintage double border
-        ctx.strokeStyle = '#C85A32';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(24, 24, width - 48, estimatedHeight - 48);
-        ctx.strokeStyle = '#D6CBC0';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(32, 32, width - 64, estimatedHeight - 64);
-      }
-
-      // Header Banner Ribbon
-      ctx.fillStyle = borderStyle === 'botanical' ? '#5F7A4D' : borderStyle === 'minimal' ? '#333333' : '#C85A32';
-      ctx.fillRect(width / 2 - 140, 24, 280, 28);
-      ctx.fillStyle = '#FFFFFF';
-      ctx.font = 'bold 12px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(`RECIPE JOURNAL · #${recipe.id.slice(-6).toUpperCase()}`, width / 2, 42);
-
-      // Recipe Title
-      ctx.fillStyle = '#2C2723';
-      ctx.font = 'bold 30px "Noto Serif SC", serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(recipe.title, width / 2, 92);
-
-      // Subtitle
-      ctx.fillStyle = '#7A7268';
-      ctx.font = 'italic 14px "Noto Serif SC", serif';
-      const sub = recipe.subtitle ? `“${recipe.subtitle}”` : '“每一道菜都是一封写给生活的情书”';
-      ctx.fillText(sub, width / 2, 122);
-
-      // Meta Line
-      ctx.font = '12px sans-serif';
-      ctx.fillStyle = '#5A5248';
-      const metaText = `${recipe.category}${recipe.subCategory ? ` / ${recipe.subCategory}` : ''} · ${recipe.cuisine} · 备料${recipe.prepTimeMinutes}分 · 烹饪${recipe.cookTimeMinutes}分 · ${servings}人份 · 热量约${perServingCalories}kcal/份 · 难度${'★'.repeat(recipe.difficulty || 3)}`;
-      ctx.fillText(metaText, width / 2, 152);
-
-      let currentY = 180;
-
-      // Draw Ingredients Box
-      ctx.fillStyle = borderStyle === 'minimal' ? '#FAFAFA' : '#F6F0E6';
-      ctx.fillRect(48, currentY, width - 96, 185);
-      ctx.strokeStyle = '#E2D3C0';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(48, currentY, width - 96, 185);
-
-      ctx.fillStyle = borderStyle === 'botanical' ? '#5F7A4D' : '#C85A32';
-      ctx.font = 'bold 14px sans-serif';
-      ctx.textAlign = 'left';
-      ctx.fillText(`🛒 食材用量清单 (${servings}人份)`, 64, currentY + 26);
-
-      ctx.fillStyle = '#2C2723';
-      ctx.font = '12px sans-serif';
-      let ingX = 64;
-      let ingY = currentY + 52;
-      recipe.ingredients.slice(0, 18).forEach((ing) => {
-        const text = `${ing.name} …… ${formatScaledAmount(ing)}${ing.unit}`;
-        ctx.fillText(text, ingX, ingY);
-        ingY += 23;
-        if (ingY > currentY + 165 && ingX === 64) {
-          ingY = currentY + 52;
-          ingX = 360;
-        } else if (ingY > currentY + 165 && ingX === 360) {
-          ingY = currentY + 52;
-          ingX = 660;
+          return true;
         }
       });
 
-      currentY += 215;
-
-      // Steps Title
-      ctx.fillStyle = borderStyle === 'botanical' ? '#5F7A4D' : '#C85A32';
-      ctx.font = 'bold 16px sans-serif';
-      ctx.fillText('🍳 烹饪步骤与火候时序', 48, currentY);
-      currentY += 26;
-
-      // Steps Content
-      recipe.steps.forEach((step, idx) => {
-        ctx.fillStyle = borderStyle === 'botanical' ? '#5F7A4D' : '#C85A32';
-        ctx.beginPath();
-        ctx.arc(60, currentY + 8, 10, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#FFFFFF';
-        ctx.font = 'bold 10px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText(`${idx + 1}`, 60, currentY + 12);
-
-        ctx.textAlign = 'left';
-        ctx.fillStyle = '#2C2723';
-        ctx.font = 'bold 14px sans-serif';
-        ctx.fillText(step.title, 82, currentY + 12);
-
-        if (step.heat || step.durationMinutes) {
-          ctx.fillStyle = '#7A7268';
-          ctx.font = '11px sans-serif';
-          ctx.fillText(`(${step.heat || ''} ${step.durationMinutes ? `${step.durationMinutes}分钟` : ''})`, 82 + ctx.measureText(step.title).width + 12, currentY + 12);
-        }
-
-        ctx.fillStyle = '#4A423B';
-        ctx.font = '12px sans-serif';
-        const words = step.description;
-        let line = '';
-        let lineY = currentY + 34;
-        for (let i = 0; i < words.length; i++) {
-          line += words[i];
-          if (line.length >= 56 || i === words.length - 1) {
-            ctx.fillText(line, 82, lineY);
-            line = '';
-            lineY += 19;
-          }
-        }
-
-        if (step.tip) {
-          ctx.fillStyle = '#C08A3E';
-          ctx.font = 'italic 11px sans-serif';
-          ctx.fillText(`💡 避坑要点: ${step.tip.slice(0, 65)}`, 82, lineY);
-          lineY += 22;
-        }
-
-        currentY = lineY + 14;
-      });
-
-      // Reflection Box if enabled
-      if (includeReview && recipe.review?.tastingNotes) {
-        ctx.fillStyle = borderStyle === 'minimal' ? '#FAFAFA' : '#FFFDF9';
-        ctx.fillRect(48, currentY, width - 96, 115);
-        ctx.strokeStyle = '#E2D3C0';
-        ctx.strokeRect(48, currentY, width - 96, 115);
-
-        ctx.fillStyle = borderStyle === 'botanical' ? '#5F7A4D' : '#C85A32';
-        ctx.font = 'bold 13px sans-serif';
-        ctx.fillText('✨ 烹饪心得与手帐复盘', 64, currentY + 26);
-
-        ctx.fillStyle = '#5A5248';
-        ctx.font = '12px sans-serif';
-        ctx.fillText(recipe.review.tastingNotes.slice(0, 110), 64, currentY + 52);
-
-        if (recipe.review.pitfallsAndLessons) {
-          ctx.fillStyle = '#C85A32';
-          ctx.font = '11px sans-serif';
-          ctx.fillText(`避坑经验: ${recipe.review.pitfallsAndLessons.slice(0, 90)}`, 64, currentY + 80);
-        }
-
-        currentY += 135;
-      }
-
-      // Watermark Colophon
-      ctx.fillStyle = '#9A9085';
-      ctx.font = '11px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('—— 食味手记 · 私房烹饪手帐 —— 记录每一次与美食相遇的幸福时光', width / 2, currentY + 16);
-
-      // Trigger download
-      const dataUrl = canvas.toDataURL('image/png');
       const link = document.createElement('a');
-      link.download = `食味手记_${recipe.title}_打印版手帐.png`;
+      link.download = `食味手记_${recipe.title}_A4手帐长图.png`;
       link.href = dataUrl;
+      document.body.appendChild(link);
       link.click();
+      document.body.removeChild(link);
 
-      setExportSuccessMsg('已成功生成精美手帐长图！');
+      setExportSuccessMsg('已成功生成包含高清实拍图的精美手帐长图！');
       setTimeout(() => setExportSuccessMsg(null), 3500);
     } catch (err) {
-      console.error('Export error:', err);
-      setExportSuccessMsg('⚠️ 生成长图遇到问题，推荐直接点击「立即打印 / 另存为 PDF」');
-      setTimeout(() => setExportSuccessMsg(null), 4000);
+      console.error('Export image error:', err);
+      // Fallback: suggest print or alert
+      setExportSuccessMsg('⚠️ 生成长图遇到跨域或网络问题，可点击右侧「立即打印 / 另存为 PDF」无损导出');
+      setTimeout(() => setExportSuccessMsg(null), 4500);
     } finally {
       setIsExportingImage(false);
     }
@@ -524,6 +281,68 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
                   </select>
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* 3. Photo Layout Mode (大图模式 / 多图拼贴模式 / 拍立得矩阵 / 胶卷画报) */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] font-semibold text-[#7A7268] flex items-center gap-1">
+              <ImageIcon className="w-3.5 h-3.5 text-[#C85A32]" />
+              <span>图片布局：</span>
+            </span>
+
+            <div className="flex items-center gap-1 bg-[#FAF7F2] p-0.5 rounded-lg border border-[#EADBCE]">
+              <button
+                type="button"
+                onClick={() => setPhotoLayout('hero')}
+                className={`px-2.5 py-1 rounded text-xs transition-all flex items-center gap-1 ${
+                  photoLayout === 'hero'
+                    ? 'bg-white text-[#C85A32] shadow-2xs font-bold'
+                    : 'text-[#7A7268] hover:text-[#2C2723]'
+                }`}
+                title="经典单张横幅大图，凸显菜品定妆照美感"
+              >
+                <span>🖼️ 大图焦点</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPhotoLayout('collage')}
+                className={`px-2.5 py-1 rounded text-xs transition-all flex items-center gap-1 ${
+                  photoLayout === 'collage'
+                    ? 'bg-white text-[#C85A32] shadow-2xs font-bold'
+                    : 'text-[#7A7268] hover:text-[#2C2723]'
+                }`}
+                title="主图与花絮高低错落杂志感拼接，视觉层次丰富"
+              >
+                <span>🎨 多图拼贴</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPhotoLayout('polaroid-grid')}
+                className={`px-2.5 py-1 rounded text-xs transition-all flex items-center gap-1 ${
+                  photoLayout === 'polaroid-grid'
+                    ? 'bg-white text-[#C85A32] shadow-2xs font-bold'
+                    : 'text-[#7A7268] hover:text-[#2C2723]'
+                }`}
+                title="微倾斜拍立得相框矩阵，带有浓厚手帐贴纸氛围"
+              >
+                <span>📷 拍立得矩阵</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPhotoLayout('filmstrip')}
+                className={`px-2.5 py-1 rounded text-xs transition-all flex items-center gap-1 ${
+                  photoLayout === 'filmstrip'
+                    ? 'bg-white text-[#C85A32] shadow-2xs font-bold'
+                    : 'text-[#7A7268] hover:text-[#2C2723]'
+                }`}
+                title="复古胶卷连环画廊，展现烹饪过程与出锅高光"
+              >
+                <span>🎞️ 胶卷连环</span>
+              </button>
             </div>
           </div>
 
@@ -1001,27 +820,229 @@ export const RecipePDFExportModal: React.FC<RecipePDFExportModalProps> = ({
               </div>
             </div>
 
-            {/* Featured Cover Photo (Polaroid Style with Corner Tape) */}
+            {/* ================= DYNAMIC PHOTO GRID LAYOUT (大图焦点 / 多图拼贴 / 拍立得矩阵 / 胶卷连环) ================= */}
             {recipe.coverImage && (
-              <div className="mb-6 print-avoid-break flex justify-center">
-                <div className="bg-white p-2.5 pb-3 rounded-lg border border-[#EADBCE] shadow-sm max-w-xl w-full relative -rotate-0.5">
-                  {/* Washi tape pinned on top left */}
-                  <div className="absolute -top-2 left-6 washi-tape px-4 py-0.5 bg-[#C85A32]/80 text-white text-[9px] font-mono tracking-widest uppercase">
-                    POLAROID
-                  </div>
+              <div className="mb-6 print-avoid-break">
+                {/* 1. HERO / 大图焦点模式 */}
+                {photoLayout === 'hero' && (
+                  <div className="flex justify-center">
+                    <div className="bg-white p-2.5 pb-3 rounded-xl border border-[#EADBCE] shadow-sm max-w-xl w-full relative -rotate-0.5">
+                      <div className="absolute -top-2 left-6 washi-tape px-4 py-0.5 bg-[#C85A32]/80 text-white text-[9px] font-mono tracking-widest uppercase">
+                        POLAROID · 定妆大照
+                      </div>
 
-                  <div className="aspect-[21/9] w-full rounded overflow-hidden bg-[#FAF7F2]">
-                    <img
-                      src={recipe.coverImage}
-                      alt={recipe.title}
-                      referrerPolicy="no-referrer"
-                      className="w-full h-full object-cover"
-                    />
+                      <div className="aspect-[21/9] w-full rounded-lg overflow-hidden bg-[#FAF7F2]">
+                        <img
+                          src={recipe.coverImage}
+                          alt={recipe.title}
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <div className="mt-1.5 text-center text-[10px] text-[#7A7268] italic font-serif flex items-center justify-center gap-2">
+                        <span>✨ 私房手作定妆照 · {recipe.title}</span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="mt-1 text-center text-[10px] text-[#7A7268] italic font-serif">
-                    私房手作定妆照 · {recipe.title}
+                )}
+
+                {/* 2. COLLAGE / 多图拼贴模式 (杂志感错落主副图并置) */}
+                {photoLayout === 'collage' && (
+                  <div className="grid grid-cols-12 gap-3 items-stretch max-w-2xl mx-auto">
+                    {/* Left large main photo */}
+                    <div className="col-span-7 bg-white p-2.5 pb-3 rounded-xl border border-[#EADBCE] shadow-sm relative -rotate-1 flex flex-col">
+                      <div className="absolute -top-2 left-5 washi-tape px-3 py-0.5 bg-[#C85A32] text-white text-[8px] font-mono uppercase">
+                        MAIN DISH
+                      </div>
+                      <div className="aspect-[4/3] w-full rounded-lg overflow-hidden bg-[#FAF7F2] flex-1">
+                        <img
+                          src={recipe.coverImage}
+                          alt={recipe.title}
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <span className="text-[10px] text-center text-[#7A7268] mt-1.5 font-serif italic truncate">
+                        定妆成菜 · {recipe.title}
+                      </span>
+                    </div>
+
+                    {/* Right column: 2 auxiliary photos from steps or gallery */}
+                    <div className="col-span-5 flex flex-col justify-between gap-2.5">
+                      {/* Secondary photo 1 */}
+                      <div className="bg-white p-2 pb-2.5 rounded-xl border border-[#EADBCE] shadow-xs relative rotate-1 flex-1 flex flex-col">
+                        <div className="absolute -top-1.5 right-4 washi-tape px-2 py-0.5 bg-amber-600 text-white text-[7px] font-mono uppercase">
+                          DETAIL
+                        </div>
+                        <div className="aspect-[16/9] w-full rounded-md overflow-hidden bg-[#FAF7F2] flex-1">
+                          <img
+                            src={
+                              recipe.galleryPhotos?.[0] || 
+                              recipe.steps.find((s) => s.photoUrl)?.photoUrl || 
+                              recipe.coverImage
+                            }
+                            alt="精选特写"
+                            referrerPolicy="no-referrer"
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <span className="text-[9px] text-center text-[#7A7268] mt-1 font-serif">
+                          火候特写 · 质感肌理
+                        </span>
+                      </div>
+
+                      {/* Secondary photo 2 */}
+                      <div className="bg-white p-2 pb-2.5 rounded-xl border border-[#EADBCE] shadow-xs relative -rotate-0.5 flex-1 flex flex-col">
+                        <div className="aspect-[16/9] w-full rounded-md overflow-hidden bg-[#FAF7F2] flex-1">
+                          <img
+                            src={
+                              recipe.galleryPhotos?.[1] || 
+                              recipe.steps.filter((s) => s.photoUrl)[1]?.photoUrl || 
+                              recipe.coverImage
+                            }
+                            alt="出锅花絮"
+                            referrerPolicy="no-referrer"
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <span className="text-[9px] text-center text-[#7A7268] mt-1 font-serif">
+                          出锅热气 · 美味瞬间
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                )}
+
+                {/* 3. POLAROID-GRID / 拍立得矩阵模式 (三连拍立得卡片手帐) */}
+                {photoLayout === 'polaroid-grid' && (
+                  <div className="grid grid-cols-3 gap-3 max-w-2xl mx-auto">
+                    {/* Polaroid 1: Cover */}
+                    <div className="bg-white p-2 pb-3 rounded-xl border border-[#EADBCE] shadow-sm transform -rotate-2">
+                      <div className="washi-tape px-2 py-0.5 bg-[#C85A32]/80 text-white text-[8px] font-mono uppercase text-center mb-1">
+                        SNAPSHOT 01
+                      </div>
+                      <div className="aspect-square w-full rounded-lg overflow-hidden bg-[#FAF7F2]">
+                        <img
+                          src={recipe.coverImage}
+                          alt={recipe.title}
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <span className="block text-[10px] text-center text-[#5A5248] font-serif font-bold mt-1.5 truncate">
+                        定妆定格
+                      </span>
+                    </div>
+
+                    {/* Polaroid 2: Cooking in Action */}
+                    <div className="bg-white p-2 pb-3 rounded-xl border border-[#EADBCE] shadow-sm transform rotate-1">
+                      <div className="washi-tape px-2 py-0.5 bg-[#5F7A4D]/80 text-white text-[8px] font-mono uppercase text-center mb-1">
+                        IN THE PAN
+                      </div>
+                      <div className="aspect-square w-full rounded-lg overflow-hidden bg-[#FAF7F2]">
+                        <img
+                          src={
+                            recipe.steps.find((s) => s.photoUrl)?.photoUrl || 
+                            recipe.galleryPhotos?.[0] || 
+                            recipe.coverImage
+                          }
+                          alt="烹饪过程"
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <span className="block text-[10px] text-center text-[#5A5248] font-serif font-bold mt-1.5 truncate">
+                        下锅微沸
+                      </span>
+                    </div>
+
+                    {/* Polaroid 3: Plating / Table */}
+                    <div className="bg-white p-2 pb-3 rounded-xl border border-[#EADBCE] shadow-sm transform -rotate-1">
+                      <div className="washi-tape px-2 py-0.5 bg-[#C08A3E]/80 text-white text-[8px] font-mono uppercase text-center mb-1">
+                        AT TABLE
+                      </div>
+                      <div className="aspect-square w-full rounded-lg overflow-hidden bg-[#FAF7F2]">
+                        <img
+                          src={
+                            recipe.galleryPhotos?.[1] || 
+                            recipe.steps.filter((s) => s.photoUrl)[1]?.photoUrl || 
+                            recipe.coverImage
+                          }
+                          alt="餐桌食客"
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <span className="block text-[10px] text-center text-[#5A5248] font-serif font-bold mt-1.5 truncate">
+                        食指大动
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* 4. FILMSTRIP / 复古胶卷连环画廊 */}
+                {photoLayout === 'filmstrip' && (
+                  <div className="bg-[#1C1815] text-[#ECE6DC] p-2.5 rounded-xl border border-stone-800 shadow-md max-w-2xl mx-auto">
+                    {/* Sprocket holes top */}
+                    <div className="flex justify-between items-center px-2 pb-2">
+                      <div className="flex gap-2">
+                        {Array.from({ length: 14 }).map((_, i) => (
+                          <div key={i} className="w-2.5 h-1.5 bg-white/20 rounded-xs" />
+                        ))}
+                      </div>
+                      <span className="text-[8px] font-mono tracking-widest opacity-60">KODAK 400 · RECIPE FILM</span>
+                    </div>
+
+                    {/* Film frames */}
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="aspect-[4/3] rounded overflow-hidden bg-stone-900 border border-white/10 relative">
+                        <img
+                          src={recipe.coverImage}
+                          alt="帧1"
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover"
+                        />
+                        <span className="absolute bottom-1 right-1 px-1 bg-black/60 text-[8px] font-mono rounded">#01 成菜</span>
+                      </div>
+                      <div className="aspect-[4/3] rounded overflow-hidden bg-stone-900 border border-white/10 relative">
+                        <img
+                          src={
+                            recipe.steps.find((s) => s.photoUrl)?.photoUrl || 
+                            recipe.galleryPhotos?.[0] || 
+                            recipe.coverImage
+                          }
+                          alt="帧2"
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover"
+                        />
+                        <span className="absolute bottom-1 right-1 px-1 bg-black/60 text-[8px] font-mono rounded">#02 火候</span>
+                      </div>
+                      <div className="aspect-[4/3] rounded overflow-hidden bg-stone-900 border border-white/10 relative">
+                        <img
+                          src={
+                            recipe.galleryPhotos?.[1] || 
+                            recipe.steps.filter((s) => s.photoUrl)[1]?.photoUrl || 
+                            recipe.coverImage
+                          }
+                          alt="帧3"
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover"
+                        />
+                        <span className="absolute bottom-1 right-1 px-1 bg-black/60 text-[8px] font-mono rounded">#03 出锅</span>
+                      </div>
+                    </div>
+
+                    {/* Sprocket holes bottom */}
+                    <div className="flex justify-between items-center px-2 pt-2">
+                      <span className="text-[8px] font-mono opacity-60">FRAME 24A • 25A • 26A</span>
+                      <div className="flex gap-2">
+                        {Array.from({ length: 14 }).map((_, i) => (
+                          <div key={i} className="w-2.5 h-1.5 bg-white/20 rounded-xs" />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
