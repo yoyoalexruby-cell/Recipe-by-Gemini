@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { Ingredient, Recipe } from '../types/recipe';
 import { UserProfile } from '../types/auth';
+import { addDaysLocal } from '../utils/dateUtils';
 import { 
   ShoppingCategory, 
   SHOPPING_CATEGORIES, 
@@ -93,11 +94,7 @@ export const ShoppingListModal: React.FC<ShoppingListModalProps> = ({
 
   // Quick reservation modal/sheet state for specific ingredient
   const [reservingItem, setReservingItem] = useState<ShoppingItem | null>(null);
-  const [reserveTargetDate, setReserveTargetDate] = useState<string>(() => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    return tomorrow.toISOString().slice(0, 10);
-  });
+  const [reserveTargetDate, setReserveTargetDate] = useState<string>(() => addDaysLocal(1));
   const [reserveNote, setReserveNote] = useState('');
 
   // Toast

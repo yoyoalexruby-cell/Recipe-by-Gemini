@@ -15,6 +15,7 @@ import {
   setAutoMenuRotationEnabled
 } from '../utils/seasonalMenuRotation';
 import { loginAsOfficialEditorial, logoutUser } from '../utils/authService';
+import { formatLocalDate } from '../utils/dateUtils';
 import {
   UGCReportItem,
   getReportedItems,
@@ -175,7 +176,7 @@ export const OfficialOpsModal: React.FC<OfficialOpsModalProps> = ({
       curatorName: OFFICIAL_EDITORIAL_USER.displayName,
       recipeIds: selectedRecipeIds,
       pinned: true,
-      updatedAt: new Date().toISOString().slice(0, 10)
+      updatedAt: formatLocalDate()
     };
 
     const updated = [created, ...menus];

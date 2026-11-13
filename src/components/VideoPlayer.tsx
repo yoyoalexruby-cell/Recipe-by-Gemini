@@ -1,5 +1,6 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { Play, Pause, Volume2, VolumeX, Maximize2, Film } from 'lucide-react';
+import { resolveMediaUrl } from '../utils/mediaStorage';
 
 interface VideoPlayerProps {
   src: string;
@@ -12,22 +13,35 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   src,
   poster,
   title = '烹饪实拍视频',
-  className = ''
+  className = '',
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [resolvedSrc, setResolvedSrc] = useState<string | undefined>(() =>
+    src.startsWith('idb://') ? undefined : src
+  );
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-  const [hasStarted, setHasStarted] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    resolveMediaUrl(src).then((url) => {
+      if (active) {
+        setResolvedSrc(url);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [src]);
 
   const togglePlay = () => {
-    if (!videoRef.current) return;
+    if (!videoRef.current || !resolvedSrc) return;
     if (isPlaying) {
       videoRef.current.pause();
       setIsPlaying(false);
     } else {
-      videoRef.current.play();
+      videoRef.current.play().catch(() => {});
       setIsPlaying(true);
-      setHasStarted(true);
     }
   };
 
@@ -46,15 +60,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   return (
     <div className={`relative rounded-xl overflow-hidden bg-black/90 group shadow-md ${className}`}>
-      <video
-        ref={videoRef}
-        src={src}
-        poster={poster}
-        playsInline
-        onEnded={() => setIsPlaying(false)}
-        className="w-full h-full object-contain cursor-pointer"
-        onClick={togglePlay}
-      />
+      {resolvedSrc ? (
+        <video
+          ref={videoRef}
+          src={resolvedSrc}
+          poster={poster}
+          playsInline
+          onEnded={() => setIsPlaying(false)}
+          className="w-full h-full object-contain cursor-pointer"
+          onClick={togglePlay}
+        />
+      ) : (
+        <div className="w-full h-full min-h-[160px] flex items-center justify-center text-xs text-stone-300">
+          正在从本机 IndexedDB 媒体库加载视频...
+        </div>
+      )}
 
       {/* Video Badge */}
       <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-sm px-2.5 py-1 rounded-md text-[11px] font-medium text-white flex items-center gap-1.5 pointer-events-none">
@@ -63,7 +83,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       </div>
 
       {/* Center Big Play Button (when paused) */}
-      {!isPlaying && (
+      {!isPlaying && resolvedSrc && (
         <button
           type="button"
           onClick={togglePlay}

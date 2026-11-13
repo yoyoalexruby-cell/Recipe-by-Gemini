@@ -3,6 +3,7 @@ import { Recipe } from '../types/recipe';
 import { CookingRecord } from '../types/cookingLog';
 import { X, Calendar, Star, Sparkles, ChefHat, Check } from 'lucide-react';
 import { PRESET_WEATHER } from '../types/recipe';
+import { formatLocalDate } from '../utils/dateUtils';
 
 interface MarkCookingModalProps {
   isOpen: boolean;
@@ -30,7 +31,7 @@ export const MarkCookingModal: React.FC<MarkCookingModalProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  const todayStr = initialDate || new Date().toISOString().slice(0, 10);
+  const todayStr = initialDate || formatLocalDate();
   const [selectedRecipeId, setSelectedRecipeId] = useState<string>(
     initialRecipe?.id || (recipes.length > 0 ? recipes[0].id : '')
   );
@@ -40,6 +41,7 @@ export const MarkCookingModal: React.FC<MarkCookingModalProps> = ({
   const [dinerFeedback, setDinerFeedback] = useState<string>('');
   const [weatherStamp, setWeatherStamp] = useState<string>('☀️ 晴朗微风');
   const [recipeSearch, setRecipeSearch] = useState<string>('');
+  const [formError, setFormError] = useState<string | null>(null);
 
   const currentSelectedRecipe = recipes.find(r => r.id === selectedRecipeId) || recipes[0];
 
@@ -52,13 +54,14 @@ export const MarkCookingModal: React.FC<MarkCookingModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentSelectedRecipe) {
-      alert('请先选择一道要标记的菜谱！');
+      setFormError('请先选择一道要标记的菜谱！');
       return;
     }
     if (!cookDate) {
-      alert('请选择烹饪日期！');
+      setFormError('请选择烹饪日期！');
       return;
     }
+    setFormError(null);
 
     onSaveRecord({
       recipe: currentSelectedRecipe,
@@ -72,11 +75,22 @@ export const MarkCookingModal: React.FC<MarkCookingModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/45 backdrop-blur-xs animate-fade-in">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="打卡烹饪记录"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/45 backdrop-blur-xs animate-fade-in"
+    >
       <div 
         className="w-full max-w-lg bg-[#FAF7F2] border border-[#EADBCE] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
+        {formError && (
+          <div role="alert" className="px-4 py-2 bg-rose-50 border-b border-rose-200 text-rose-800 text-xs flex items-center justify-between">
+            <span>⚠️ {formError}</span>
+            <button type="button" onClick={() => setFormError(null)} className="font-bold">✕</button>
+          </div>
+        )}
         {/* Modal Header */}
         <div className="px-6 py-4 bg-white border-b border-[#EADBCE] flex items-center justify-between">
           <div className="flex items-center gap-2">

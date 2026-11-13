@@ -5,6 +5,7 @@ import {
   MessageCircle, ExternalLink, Sparkles, Smartphone,
   Apple, Globe, Heart, ShieldCheck
 } from 'lucide-react';
+import { formatLocalDate } from '../utils/dateUtils';
 
 interface AppShareModalProps {
   isOpen: boolean;
@@ -196,7 +197,7 @@ export const AppShareModal: React.FC<AppShareModalProps> = ({ isOpen, onClose })
         const imgUrl = canvas.toDataURL('image/png');
         const a = document.createElement('a');
         a.href = imgUrl;
-        a.download = `食味手记-分享海报-${new Date().toISOString().slice(0, 10)}.png`;
+        a.download = `食味手记-分享海报-${formatLocalDate()}.png`;
         a.click();
         showToast('🎨 高清手帐分享海报已生成并下载！可直接发送微信朋友圈或好友。');
       };

@@ -15,6 +15,7 @@ import {
   deleteCookingRecord, 
   markRecipeCookedOnDate 
 } from '../utils/cookingLogStorage';
+import { formatLocalDate } from '../utils/dateUtils';
 
 interface CalendarJournalViewProps {
   recipes: Recipe[];
@@ -31,7 +32,7 @@ export const CalendarJournalView: React.FC<CalendarJournalViewProps> = ({
 }) => {
   // Current calendar viewing year & month
   const today = new Date();
-  const todayStr = today.toISOString().slice(0, 10);
+  const todayStr = formatLocalDate(today);
 
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   const [currentMonth, setCurrentMonth] = useState(today.getMonth()); // 0-indexed (10 = Nov)
@@ -97,7 +98,7 @@ export const CalendarJournalView: React.FC<CalendarJournalViewProps> = ({
     const now = new Date();
     setCurrentYear(now.getFullYear());
     setCurrentMonth(now.getMonth());
-    setSelectedDate(now.toISOString().slice(0, 10));
+    setSelectedDate(formatLocalDate(now));
   };
 
   // Build calendar matrix (Monday-based weeks)

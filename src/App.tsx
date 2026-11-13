@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Recipe } from './types/recipe';
 import { UserProfile } from './types/auth';
-import { getCurrentUser, deleteCurrentUserAccount } from './utils/authService';
+import { getCurrentUser, deleteCurrentUserAccount, CURRENT_USER_KEY } from './utils/authService';
 import { 
+  MASTER_RECIPES_KEY,
   getUserRecipes, 
   getPublicSquareRecipes, 
   saveUserRecipe, 
@@ -14,8 +15,9 @@ import {
   getRecipeById,
   purgeAllUserOwnedData
 } from './utils/multiUserStorage';
+import { formatLocalDate } from './utils/dateUtils';
 import { auditUGCContentSafety } from './utils/ugcModeration';
-import { getGitHubConfig, syncRecipesToGitHub, GitHubConfig } from './utils/githubSync';
+import { getGitHubConfig, saveGitHubConfig, syncRecipesToGitHub, GitHubConfig } from './utils/githubSync';
 import { Header } from './components/Header';
 import { RecipeCard } from './components/RecipeCard';
 import { RecipeDetail } from './components/RecipeDetail';
@@ -158,8 +160,14 @@ export default function App() {
         const recipeId = urlParams.get('recipeId') || urlParams.get('recipe');
         if (recipeId) {
           const found = getRecipeById(recipeId);
+          const activeUser = getCurrentUser();
           if (found) {
-            setSharedRecipeTarget(found);
+            if (found.isPublic === true || (activeUser && found.ownerId === activeUser.uid)) {
+              setSharedRecipeTarget(found);
+            } else {
+              setSyncToast('该手帐为作者私密食谱，仅作者本人或公开分享后可访问');
+              setTimeout(() => setSyncToast(null), 4000);
+            }
           }
         }
       } catch (e) {
@@ -172,7 +180,7 @@ export default function App() {
     return () => window.removeEventListener('popstate', syncFromUrl);
   }, []);
 
-  // Listen to master recipe updates & auth changes across windows / tabs
+  // Listen to master recipe updates, auth changes & native cross-tab storage events
   useEffect(() => {
     const handleStorageChange = () => {
       setRecipes(getUserRecipes(currentUser));
@@ -184,29 +192,63 @@ export default function App() {
       setRecipes(getUserRecipes(newUser));
       setPublicRecipes(getPublicSquareRecipes());
     };
+    const handleNativeCrossTabStorage = (e: StorageEvent) => {
+      if (!e.key || e.key === MASTER_RECIPES_KEY) {
+        const latestUser = getCurrentUser();
+        setRecipes(getUserRecipes(latestUser));
+        setPublicRecipes(getPublicSquareRecipes());
+      } else if (e.key === CURRENT_USER_KEY) {
+        const latestUser = getCurrentUser();
+        setCurrentUser(latestUser);
+        setRecipes(getUserRecipes(latestUser));
+        setPublicRecipes(getPublicSquareRecipes());
+      }
+    };
+    const handleQuotaExceeded = (e: Event) => {
+      const custom = e as CustomEvent<{ message?: string }>;
+      setSyncToast(custom.detail?.message || '本地存储空间已满，请前往备份页导出或清理超大图片');
+      setTimeout(() => setSyncToast(null), 6000);
+    };
 
     window.addEventListener('recipes-updated', handleStorageChange);
     window.addEventListener('auth-state-changed', handleAuthChange as EventListener);
+    window.addEventListener('storage', handleNativeCrossTabStorage);
+    window.addEventListener('storage-quota-exceeded', handleQuotaExceeded);
     return () => {
       window.removeEventListener('recipes-updated', handleStorageChange);
       window.removeEventListener('auth-state-changed', handleAuthChange as EventListener);
+      window.removeEventListener('storage', handleNativeCrossTabStorage);
+      window.removeEventListener('storage-quota-exceeded', handleQuotaExceeded);
     };
   }, [currentUser]);
 
-  // Sync recipes to GitHub if configured
+  // Debounced auto-sync to GitHub (3s debounce, merges full master snapshot safely)
   useEffect(() => {
-    if (!isFirstRender.current && githubConfig.autoSync && githubConfig.token) {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    if (!githubConfig.autoSync || !githubConfig.token) return;
+
+    const timer = window.setTimeout(() => {
       syncRecipesToGitHub(githubConfig, recipes)
         .then((res) => {
           if (res.success) {
-            setSyncToast(`已实时备份至 GitHub (${res.commitSha})`);
+            const updatedCfg = {
+              ...githubConfig,
+              lastSyncedAt: new Date().toLocaleString('zh-CN'),
+              lastCommitSha: res.commitSha,
+            };
+            saveGitHubConfig(updatedCfg);
+            setSyncToast(`已自动合并备份至 GitHub (${res.commitSha})`);
             setTimeout(() => setSyncToast(null), 3000);
           }
         })
         .catch(console.error);
-    }
-    isFirstRender.current = false;
-  }, [recipes, githubConfig]);
+    }, 3000);
+
+    return () => window.clearTimeout(timer);
+  }, [recipes, githubConfig.autoSync, githubConfig.token, githubConfig.owner, githubConfig.repo, githubConfig.branch]);
 
   // Handle Save Recipe (with Apple Guideline 1.2 pre-publish UGC content safety & food hazard filter)
   const handleSaveRecipe = (recipe: Recipe) => {
@@ -421,7 +463,7 @@ export default function App() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `culinary-journal-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `culinary-journal-export-${formatLocalDate()}.json`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
@@ -534,6 +576,7 @@ export default function App() {
           /* VIEW 1: DETAIL RECIPE VIEW */
           <RecipeDetail
             recipe={selectedRecipe}
+            currentUser={currentUser}
             onBack={() => setSelectedRecipe(null)}
             onEdit={(rec) => {
               setEditingRecipe(rec);
@@ -546,7 +589,7 @@ export default function App() {
               setSelectedRecipe(updated);
             }}
             onStartTimer={handleStartTimer}
-            onStartCooking={(rec) => {
+            onStartCooking={() => {
               setSelectedRecipe(null);
               setActiveView('pantry');
             }}
@@ -579,7 +622,7 @@ export default function App() {
                           onClick={() => setIsAuthModalOpen(true)}
                           className="text-[11px] text-[#C85A32] hover:underline"
                         >
-                          {t('journal.loginPrompt', '(点击登录以享受多端独立手帐)')}
+                          {t('journal.loginPrompt', '(点击登录切换本机多用户手帐视图)')}
                         </button>
                       )}
                     </div>
@@ -901,8 +944,10 @@ export default function App() {
             {activeView === 'backup' && (
               <BackupView
                 recipes={recipes}
+                currentUser={currentUser}
                 onReloadRecipes={(recs) => {
                   setRecipes(recs);
+                  setPublicRecipes(getPublicSquareRecipes());
                 }}
                 onOpenGitHub={() => setIsGitHubModalOpen(true)}
                 onOpenInstall={() => setIsInstallModalOpen(true)}

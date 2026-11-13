@@ -1,9 +1,33 @@
 import { UserProfile, LoginMethod } from '../types/auth';
 import { AVATAR_SVG_MAP } from './avatarGraphics';
 import { OFFICIAL_EDITORIAL_USER } from '../data/officialSquareSeed';
+import { formatLocalDate } from './dateUtils';
 
-const CURRENT_USER_KEY = 'food_journal_auth_user_v1';
+export const CURRENT_USER_KEY = 'food_journal_auth_user_v1';
 const REGISTERED_USERS_KEY = 'food_journal_registered_users_v1';
+const PASSWORD_PEPPER = 'culinary_journal_local_salt_v2_2026';
+
+/**
+ * 加盐多轮不可逆口令摘要（取代明文可逆 btoa 编码，同时兼容老版本已注册账户平滑升级）
+ */
+function computeSaltedPasswordHash(password: string, accountSalt: string): string {
+  const normalizedSalt = accountSalt.toLowerCase().trim();
+  const payload = `${PASSWORD_PEPPER}:${normalizedSalt}:${password}`;
+  let h1 = 0xdeadbeef ^ payload.length;
+  let h2 = 0x41c6ce57 ^ payload.length;
+  for (let round = 0; round < 1024; round++) {
+    for (let i = 0; i < payload.length; i++) {
+      const ch = payload.charCodeAt(i) ^ (round & 0xff);
+      h1 = Math.imul(h1 ^ ch, 2654435761);
+      h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  }
+  const hex1 = (h1 >>> 0).toString(16).padStart(8, '0');
+  const hex2 = (h2 >>> 0).toString(16).padStart(8, '0');
+  return `sh2$${normalizedSalt.slice(0, 8)}$${hex1}${hex2}`;
+}
 
 // Seed demo users for the public culinary square
 export const DEMO_COMMUNITY_USERS: UserProfile[] = [
@@ -13,7 +37,7 @@ export const DEMO_COMMUNITY_USERS: UserProfile[] = [
     avatarUrl: AVATAR_SVG_MAP.chef_boy_cap,
     loginMethod: 'google',
     bio: '专注江浙传统慢炖浓油赤酱，用镜头记录烟火气。',
-    createdAt: '2026-10-10'
+    createdAt: '2026-10-10',
   },
   {
     uid: 'user-momo',
@@ -21,7 +45,7 @@ export const DEMO_COMMUNITY_USERS: UserProfile[] = [
     avatarUrl: AVATAR_SVG_MAP.chef_girl_apron,
     loginMethod: 'wechat',
     bio: '日式洋果子与治愈系甜品爱好者，每周出炉两次。',
-    createdAt: '2026-10-12'
+    createdAt: '2026-10-12',
   },
   {
     uid: 'user-chef-chen',
@@ -29,8 +53,8 @@ export const DEMO_COMMUNITY_USERS: UserProfile[] = [
     avatarUrl: AVATAR_SVG_MAP.chef_mustache_gourmet,
     loginMethod: 'phone',
     bio: '15分钟快手西餐与意式面点，一个人也要好好吃饭。',
-    createdAt: '2026-10-15'
-  }
+    createdAt: '2026-10-15',
+  },
 ];
 
 export function getCurrentUser(): UserProfile | null {
@@ -51,7 +75,6 @@ export function saveCurrentUser(user: UserProfile | null): void {
     } else {
       localStorage.removeItem(CURRENT_USER_KEY);
     }
-    // Dispatch storage event for listeners
     window.dispatchEvent(new CustomEvent('auth-state-changed', { detail: user }));
   } catch (err) {
     console.error('Failed to save current user', err);
@@ -82,15 +105,15 @@ function getRegisteredUsers(): Record<string, { user: UserProfile; passwordHash:
       loginMethod: 'password' as LoginMethod,
       avatarUrl: AVATAR_SVG_MAP.chef_boy_cap,
       bio: 'Home cooking enthusiast exploring cozy culinary recipes.',
-      createdAt: '2026-10-01'
+      createdAt: '2026-10-01',
     },
-    passwordHash: btoa('Cook2026!')
+    passwordHash: computeSaltedPasswordHash('Cook2026!', defaultDemoKey),
   };
 
   const officialKey = 'official@culinaryjournal.app';
   const officialEntry = {
     user: OFFICIAL_EDITORIAL_USER,
-    passwordHash: btoa('Official2026!')
+    passwordHash: computeSaltedPasswordHash('Official2026!', officialKey),
   };
 
   try {
@@ -106,7 +129,7 @@ function getRegisteredUsers(): Record<string, { user: UserProfile; passwordHash:
   } catch {
     return {
       [defaultDemoKey]: defaultDemoEntry,
-      [officialKey]: officialEntry
+      [officialKey]: officialEntry,
     };
   }
 }
@@ -123,7 +146,7 @@ function pickLocalAvatarForSeed(seed: string): string {
   const avatarPool = [
     AVATAR_SVG_MAP.chef_boy_cap,
     AVATAR_SVG_MAP.chef_girl_apron,
-    AVATAR_SVG_MAP.chef_mustache_gourmet
+    AVATAR_SVG_MAP.chef_mustache_gourmet,
   ].filter(Boolean);
   if (avatarPool.length === 0) return '';
   let hash = 0;
@@ -134,12 +157,12 @@ function pickLocalAvatarForSeed(seed: string): string {
 }
 
 /**
- * Register with Username & Password
+ * Register with Username & Password (local multi-account profile with salted hash)
  */
 export function registerWithPassword(username: string, password: string, email?: string): UserProfile {
   const users = getRegisteredUsers();
   const key = username.toLowerCase().trim();
-  
+
   if (users[key]) {
     throw new Error('该账号已被注册，请直接登录或更换用户名 / Account already exists');
   }
@@ -154,12 +177,12 @@ export function registerWithPassword(username: string, password: string, email?:
     loginMethod: 'password',
     avatarUrl: pickLocalAvatarForSeed(username),
     bio: '手帐新人，正在用锅碗瓢盆记录生活。',
-    createdAt: new Date().toISOString().slice(0, 10)
+    createdAt: formatLocalDate(),
   };
 
   users[key] = {
     user: newUser,
-    passwordHash: btoa(encodeURIComponent(password))
+    passwordHash: computeSaltedPasswordHash(password, key),
   };
   saveRegisteredUsers(users);
   saveCurrentUser(newUser);
@@ -173,26 +196,44 @@ export function loginWithPassword(identifier: string, password: string): UserPro
   const users = getRegisteredUsers();
   const key = identifier.toLowerCase().trim();
 
-  // Search by username or email
-  const found = Object.values(users).find(
-    (item) => item.user.username?.toLowerCase() === key || item.user.email?.toLowerCase() === key
+  // Search by dictionary key, username, or email
+  const foundEntry = Object.entries(users).find(
+    ([dictKey, item]) =>
+      dictKey === key ||
+      item.user.username?.toLowerCase() === key ||
+      item.user.email?.toLowerCase() === key
   );
 
-  if (!found) {
+  if (!foundEntry) {
     throw new Error('未找到该账号，请先点击下方「免费注册新账号」 / Account not found, please sign up first');
   }
 
-  const matchesEncoded = found.passwordHash === btoa(encodeURIComponent(password));
-  const matchesLegacy = (() => {
+  const [entryKey, found] = foundEntry;
+  const expectedSalted = computeSaltedPasswordHash(password, entryKey);
+  const matchesSalted = found.passwordHash === expectedSalted;
+
+  // Backward-compatibility check for accounts registered under legacy v1 encoding, auto-upgrading hash on login
+  const matchesLegacyEncoded = (() => {
     try {
-      return found.passwordHash === btoa(password);
+      return (
+        found.passwordHash === btoa(encodeURIComponent(password)) ||
+        found.passwordHash === btoa(password)
+      );
     } catch {
       return false;
     }
   })();
 
-  if (!matchesEncoded && !matchesLegacy) {
+  if (!matchesSalted && !matchesLegacyEncoded) {
     throw new Error('密码不正确，请重新输入 / Incorrect password');
+  }
+
+  if (matchesLegacyEncoded && !matchesSalted) {
+    users[entryKey] = {
+      ...found,
+      passwordHash: expectedSalted,
+    };
+    saveRegisteredUsers(users);
   }
 
   saveCurrentUser(found.user);
@@ -200,22 +241,26 @@ export function loginWithPassword(identifier: string, password: string): UserPro
 }
 
 /**
- * Login with Phone & SMS Code
+ * Login with Phone & SMS Code (Local demo mode strictly checks verification code 1234)
  */
 export function loginWithPhone(phone: string, code: string): UserProfile {
-  if (code !== '1234' && code.length !== 4 && code.length !== 6) {
-    throw new Error('验证码不正确');
+  const cleanPhone = phone.trim();
+  if (!/^1\d{10}$/.test(cleanPhone) && cleanPhone.length < 6) {
+    throw new Error('请输入有效的手机号码');
+  }
+  if (code.trim() !== '1234') {
+    throw new Error('本机演示验证码不正确（请输入固定演示码 1234）');
   }
 
-  const uid = 'phone_' + phone.trim();
+  const uid = 'phone_' + cleanPhone;
   const user: UserProfile = {
     uid,
-    displayName: `手机用户_${phone.slice(-4)}`,
-    phone: phone.trim(),
+    displayName: `手机厨友_${cleanPhone.slice(-4)}`,
+    phone: cleanPhone,
     loginMethod: 'phone',
-    avatarUrl: pickLocalAvatarForSeed(phone),
+    avatarUrl: pickLocalAvatarForSeed(cleanPhone),
     bio: '用家常小菜，治愈一天疲惫。',
-    createdAt: new Date().toISOString().slice(0, 10)
+    createdAt: formatLocalDate(),
   };
 
   saveCurrentUser(user);
@@ -223,51 +268,45 @@ export function loginWithPhone(phone: string, code: string): UserProfile {
 }
 
 /**
- * Login with Google OAuth
+ * Local Demo Profile Switch Helpers
  */
-export function loginWithGoogle(accountName = 'Google 用户'): UserProfile {
+export function loginWithGoogle(accountName = '本机快捷档案 (Google)'): UserProfile {
   const uid = 'google_' + Date.now().toString(36);
   const user: UserProfile = {
     uid,
     displayName: accountName,
     loginMethod: 'google',
     avatarUrl: AVATAR_SVG_MAP.chef_boy_cap,
-    bio: '美食即是生活，用手帐定格每一道出锅时刻。',
-    createdAt: new Date().toISOString().slice(0, 10)
+    bio: '本机快捷手帐档案，随时可导出备份。',
+    createdAt: formatLocalDate(),
   };
   saveCurrentUser(user);
   return user;
 }
 
-/**
- * Login with WeChat QR Code
- */
 export function loginWithWeChat(): UserProfile {
   const uid = 'wx_' + Date.now().toString(36);
   const user: UserProfile = {
     uid,
-    displayName: '微信厨友_' + Math.floor(1000 + Math.random() * 9000),
+    displayName: '本机微信档案_' + Math.floor(1000 + Math.random() * 9000),
     loginMethod: 'wechat',
     avatarUrl: AVATAR_SVG_MAP.chef_girl_apron,
-    bio: '微信手帐分享者，热爱尝试各地风味。',
-    createdAt: new Date().toISOString().slice(0, 10)
+    bio: '本机离线手帐档案，热爱尝试各地风味。',
+    createdAt: formatLocalDate(),
   };
   saveCurrentUser(user);
   return user;
 }
 
-/**
- * Login with Alipay
- */
 export function loginWithAlipay(): UserProfile {
   const uid = 'alipay_' + Date.now().toString(36);
   const user: UserProfile = {
     uid,
-    displayName: '支付宝会员_' + Math.floor(1000 + Math.random() * 9000),
+    displayName: '本机支付宝档案_' + Math.floor(1000 + Math.random() * 9000),
     loginMethod: 'alipay',
     avatarUrl: AVATAR_SVG_MAP.chef_mustache_gourmet,
     bio: '生活明朗，万物可爱，一日三餐认真对待。',
-    createdAt: new Date().toISOString().slice(0, 10)
+    createdAt: formatLocalDate(),
   };
   saveCurrentUser(user);
   return user;
@@ -283,8 +322,8 @@ export function loginAsGuest(): UserProfile {
     displayName: '本机主厨 (免注册体验)',
     loginMethod: 'guest',
     avatarUrl: AVATAR_SVG_MAP.chef_boy_cap,
-    bio: '本机离线手帐体验中，随时可注册账号独立保存。',
-    createdAt: new Date().toISOString().slice(0, 10)
+    bio: '本机离线手帐体验中，随时可注册本机账号视图。',
+    createdAt: formatLocalDate(),
   };
   saveCurrentUser(user);
   return user;
@@ -299,7 +338,6 @@ export function updateCurrentUserProfile(updates: Partial<UserProfile>): UserPro
   const updated = { ...current, ...updates };
   saveCurrentUser(updated);
 
-  // Sync changes back to registered users dictionary if applicable
   const users = getRegisteredUsers();
   let modified = false;
   for (const k of Object.keys(users)) {

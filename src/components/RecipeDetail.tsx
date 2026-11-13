@@ -16,9 +16,12 @@ import { estimateRecipeCalories } from '../utils/nutritionCalculator';
 import { QuickPurchaseModal } from './QuickPurchaseModal';
 import { PurchaseItem } from '../utils/shoppingPlatforms';
 import { useI18n } from '../i18n/context';
+import { UserProfile } from '../types/auth';
+import { formatLocalDate } from '../utils/dateUtils';
 
 interface RecipeDetailProps {
   recipe: Recipe;
+  currentUser?: UserProfile | null;
   onBack: () => void;
   onEdit: (recipe: Recipe) => void;
   onDelete: (id: string) => void;
@@ -30,6 +33,7 @@ interface RecipeDetailProps {
 
 export const RecipeDetail: React.FC<RecipeDetailProps> = ({
   recipe,
+  currentUser = null,
   onBack,
   onEdit,
   onDelete,
@@ -126,14 +130,14 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
         onUpdateRecipe({
           ...recipe,
           coverImage: base64,
-          updatedAt: new Date().toISOString().slice(0, 10)
+          updatedAt: formatLocalDate()
         });
       } else {
         const currentGallery = recipe.galleryPhotos || [];
         onUpdateRecipe({
           ...recipe,
           galleryPhotos: [...currentGallery, base64],
-          updatedAt: new Date().toISOString().slice(0, 10)
+          updatedAt: formatLocalDate()
         });
       }
     } catch (err) {
@@ -947,7 +951,7 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
             data.date,
             data.notes,
             data.rating,
-            null,
+            currentUser ?? null,
             data.dinerFeedback
           );
           setMarkToast(`已成功打卡下厨！已记录在 ${data.date} 烹饪日历中`);

@@ -16,6 +16,7 @@ import {
 import { SquareReviewModal } from './SquareReviewModal';
 import { UGCReportModal } from './UGCReportModal';
 import { getBlockedUserIds } from '../utils/ugcModeration';
+import { formatLocalDate } from '../utils/dateUtils';
 import { 
   isSquareRecipeBookmarked, 
   toggleBookmarkSquareRecipe 
@@ -723,7 +724,7 @@ export const CulinarySquareView: React.FC<CulinarySquareViewProps> = ({
                   authorName: currentUser?.displayName || '我',
                   authorAvatar: currentUser?.avatarUrl,
                   content,
-                  createdAt: new Date().toISOString().slice(0, 10)
+                  createdAt: formatLocalDate()
                 }
               ]
             });

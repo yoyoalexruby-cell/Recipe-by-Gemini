@@ -1,5 +1,6 @@
 import { Recipe } from '../types/recipe';
 import { INITIAL_RECIPES } from '../data/initialRecipes';
+import { formatLocalDate } from './dateUtils';
 
 const STORAGE_KEY = 'food_journal_recipes_v1';
 const PANTRY_CHECKED_KEY = 'food_journal_pantry_v1';
@@ -95,15 +96,22 @@ export async function compressImageFile(file: File, maxDimension = 1200, quality
 }
 
 /**
- * Downloads a backup of all recipes
+ * Downloads a versioned v2.0 backup of recipes
  */
 export function exportRecipesBackup(recipes: Recipe[]) {
-  const jsonStr = JSON.stringify(recipes, null, 2);
+  const payload = {
+    version: '2.0',
+    exportedAt: new Date().toISOString(),
+    totalRecipes: recipes.length,
+    recipes,
+  };
+  const jsonStr = JSON.stringify(payload, null, 2);
   const blob = new Blob([jsonStr], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `食味手记_食谱备份_${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = `食味手记_食谱备份_${formatLocalDate()}.json`;
   a.click();
   URL.revokeObjectURL(url);
 }
+

@@ -1439,7 +1439,7 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
               data.date,
               data.notes,
               data.rating,
-              null,
+              currentUser,
               data.dinerFeedback
             );
             setCompletionToast(`已成功打卡！已记录在 ${data.date} 烹饪日历中。`);

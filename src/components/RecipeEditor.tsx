@@ -10,6 +10,8 @@ import { estimateRecipeCalories } from '../utils/nutritionCalculator';
 import { UserProfile } from '../types/auth';
 import { getCurrentUser } from '../utils/authService';
 import { useI18n } from '../i18n/context';
+import { formatLocalDate } from '../utils/dateUtils';
+import { saveMediaBlobToIDB, deleteMediaFromIDB, MAX_VIDEO_SIZE_BYTES } from '../utils/mediaStorage';
 
 interface RecipeEditorProps {
   initialRecipe?: Recipe | null;
@@ -145,10 +147,30 @@ export const RecipeEditor: React.FC<RecipeEditorProps> = ({
   const [selectedStickers, setSelectedStickers] = useState<string[]>(
     initialRecipe?.review?.stickers || ['🍚 米饭杀手', '✨ 满分硬菜']
   );
-  const [cookDate, setCookDate] = useState(initialRecipe?.review?.cookDate || new Date().toISOString().slice(0, 10));
+  const [cookDate, setCookDate] = useState(initialRecipe?.review?.cookDate || formatLocalDate());
 
   const [activeTab, setActiveTab] = useState<'basic' | 'ingredients' | 'steps' | 'review'>('basic');
   const [isProcessingImage, setIsProcessingImage] = useState(false);
+  const [isSavingVideo, setIsSavingVideo] = useState(false);
+  const [editorError, setEditorError] = useState<string | null>(null);
+
+  const handleVideoFileToIDB = async (file: File, onStored: (uri: string) => void) => {
+    if (file.size > MAX_VIDEO_SIZE_BYTES) {
+      setEditorError(`视频文件过大（当前 ${(file.size / (1024 * 1024)).toFixed(1)} MB），请上传 25 MB 以内的短视频片段。`);
+      return;
+    }
+    try {
+      setIsSavingVideo(true);
+      setEditorError(null);
+      const idbUri = await saveMediaBlobToIDB(file, 'video');
+      onStored(idbUri);
+    } catch (err) {
+      console.error('Failed to store video in IndexedDB', err);
+      setEditorError('保存视频到本地 IndexedDB 媒体库失败，请检查设备剩余空间。');
+    } finally {
+      setIsSavingVideo(false);
+    }
+  };
 
   // Intelligent real-time recipe calorie estimation based on ingredients
   const calorieEstimate = useMemo(() => {
@@ -242,15 +264,18 @@ export const RecipeEditor: React.FC<RecipeEditorProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
-      alert('请输入食谱名称！');
+      setActiveTab('basic');
+      setEditorError('请输入食谱名称后再保存！');
       return;
     }
+    setEditorError(null);
 
     const utensilsList = utensilsText
       .split(/[,，、]/)
       .map((u) => u.trim())
       .filter(Boolean);
 
+    const today = formatLocalDate();
     const recipe: Recipe = {
       id: initialRecipe?.id || 'recipe-' + Date.now(),
       title: title.trim(),
@@ -285,8 +310,8 @@ export const RecipeEditor: React.FC<RecipeEditorProps> = ({
         dinerFeedback,
         cookDate
       },
-      createdAt: initialRecipe?.createdAt || new Date().toISOString().slice(0, 10),
-      updatedAt: new Date().toISOString().slice(0, 10),
+      createdAt: initialRecipe?.createdAt || today,
+      updatedAt: today,
       isFavorite: initialRecipe?.isFavorite ?? false
     };
 
@@ -357,6 +382,12 @@ export const RecipeEditor: React.FC<RecipeEditorProps> = ({
 
         {/* Modal Form Content */}
         <form onSubmit={handleSubmit} className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-6">
+          {editorError && (
+            <div role="alert" className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs flex items-center justify-between gap-2">
+              <span>⚠️ {editorError}</span>
+              <button type="button" onClick={() => setEditorError(null)} className="font-bold px-1">✕</button>
+            </div>
+          )}
           
           {/* TAB 1: BASIC INFO & PHOTO */}
           {activeTab === 'basic' && (
@@ -456,22 +487,23 @@ export const RecipeEditor: React.FC<RecipeEditorProps> = ({
                         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                           <label className="cursor-pointer px-3 py-1.5 bg-[#FAF7F2] hover:bg-[#FAF3EC] text-[#2C2723] border border-[#EADBCE] rounded-md text-xs font-medium flex items-center justify-center gap-1.5 shrink-0">
                             <Upload className="w-3.5 h-3.5 text-[#C85A32]" />
-                            <span>本地上传视频 (MP4/WebM)</span>
+                            <span>{isSavingVideo ? '存入媒体库中...' : '本地上传视频 (≤25MB, 存入IndexedDB)'}</span>
                             <input
                               type="file"
                               accept="video/mp4,video/webm,video/quicktime"
                               className="hidden"
+                              disabled={isSavingVideo}
                               onChange={(e) => {
                                 const file = e.target.files?.[0];
                                 if (file) {
-                                  const reader = new FileReader();
-                                  reader.onload = (ev) => {
-                                    if (typeof ev.target?.result === 'string') {
-                                      setCoverVideo(ev.target.result);
+                                  handleVideoFileToIDB(file, (uri) => {
+                                    if (coverVideo.startsWith('idb://')) {
+                                      deleteMediaFromIDB(coverVideo);
                                     }
-                                  };
-                                  reader.readAsDataURL(file);
+                                    setCoverVideo(uri);
+                                  });
                                 }
+                                e.target.value = '';
                               }}
                             />
                           </label>
@@ -501,7 +533,12 @@ export const RecipeEditor: React.FC<RecipeEditorProps> = ({
                           {coverVideo && (
                             <button
                               type="button"
-                              onClick={() => setCoverVideo('')}
+                              onClick={() => {
+                                if (coverVideo.startsWith('idb://')) {
+                                  deleteMediaFromIDB(coverVideo);
+                                }
+                                setCoverVideo('');
+                              }}
                               className="text-xs text-rose-500 hover:text-rose-700 px-2 py-1 rounded"
                             >
                               移除视频
@@ -656,7 +693,7 @@ export const RecipeEditor: React.FC<RecipeEditorProps> = ({
                             type="button"
                             onClick={() => {
                               if (!inlineCatName.trim()) {
-                                alert('请输入主分类名称！');
+                                setEditorError('请输入主分类名称！');
                                 return;
                               }
                               const trimmed = inlineCatName.trim();
@@ -777,7 +814,7 @@ export const RecipeEditor: React.FC<RecipeEditorProps> = ({
                             type="button"
                             onClick={() => {
                               if (!inlineSubName.trim()) {
-                                alert('请输入二级细分名称！');
+                                setEditorError('请输入二级细分名称！');
                                 return;
                               }
                               const trimmed = inlineSubName.trim();
@@ -1442,25 +1479,26 @@ export const RecipeEditor: React.FC<RecipeEditorProps> = ({
                           </>
                         )}
 
-                        {/* Step Video Upload */}
+                        {/* Step Video Upload (IndexedDB backed, <= 25MB) */}
                         <label className="cursor-pointer px-2.5 py-1 bg-[#FAF7F2] hover:bg-[#FAF3EC] text-[#2C2723] border border-[#EADBCE] rounded-md font-medium transition-colors flex items-center gap-1.5">
                           <Film className="w-3.5 h-3.5 text-[#5F7A4D]" />
-                          <span>{st.videoUrl ? '更换步骤视频' : '上传步骤时序视频'}</span>
+                          <span>{isSavingVideo ? '保存视频中...' : st.videoUrl ? '更换步骤视频' : '上传步骤时序视频 (≤25MB)'}</span>
                           <input
                             type="file"
-                            accept="video/mp4,video/webm"
+                            accept="video/mp4,video/webm,video/quicktime"
                             className="hidden"
+                            disabled={isSavingVideo}
                             onChange={(e) => {
                               const file = e.target.files?.[0];
                               if (file) {
-                                const reader = new FileReader();
-                                reader.onload = (ev) => {
-                                  if (typeof ev.target?.result === 'string') {
-                                    updateStep(idx, 'videoUrl', ev.target.result);
+                                handleVideoFileToIDB(file, (uri) => {
+                                  if (st.videoUrl?.startsWith('idb://')) {
+                                    deleteMediaFromIDB(st.videoUrl);
                                   }
-                                };
-                                reader.readAsDataURL(file);
+                                  updateStep(idx, 'videoUrl', uri);
+                                });
                               }
+                              e.target.value = '';
                             }}
                           />
                         </label>
@@ -1468,7 +1506,12 @@ export const RecipeEditor: React.FC<RecipeEditorProps> = ({
                         {st.videoUrl && (
                           <button
                             type="button"
-                            onClick={() => updateStep(idx, 'videoUrl', undefined)}
+                            onClick={() => {
+                              if (st.videoUrl?.startsWith('idb://')) {
+                                deleteMediaFromIDB(st.videoUrl);
+                              }
+                              updateStep(idx, 'videoUrl', undefined);
+                            }}
                             className="text-xs text-rose-500 hover:text-rose-700"
                           >
                             移除视频

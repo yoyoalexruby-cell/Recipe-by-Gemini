@@ -12,6 +12,7 @@ import {
 import { CategoryDonutChart, MonthlyLineChart, TopIngredientsList } from './AnnualReviewCharts';
 import { toPng } from 'html-to-image';
 import { useI18n } from '../i18n/context';
+import { formatLocalDate } from '../utils/dateUtils';
 
 export interface AnnualReportPDFModalProps {
   isOpen: boolean;
@@ -458,7 +459,7 @@ export const AnnualReportPDFModal: React.FC<AnnualReportPDFModalProps> = ({
                   “人间烟火气，最抚凡人心” · 感谢这一年每一次灶火旁的温暖投入
                 </p>
                 <p className="text-[10px] text-[#9A9085] font-mono">
-                  报告归档日期：{new Date().toISOString().slice(0, 10)} · 官方电子纪念认证
+                  报告归档日期：{formatLocalDate()} · 官方电子纪念认证
                 </p>
               </div>
 

@@ -4,10 +4,30 @@ import { INITIAL_RECIPES } from '../data/initialRecipes';
 import { OFFICIAL_SEED_RECIPES } from '../data/officialSquareSeed';
 import { DEMO_COMMUNITY_USERS } from './authService';
 import { getTakenDownItemIds } from './ugcModeration';
-
 import { AVATAR_SVG_MAP } from './avatarGraphics';
+import { formatLocalDate } from './dateUtils';
 
-const MASTER_RECIPES_KEY = 'food_journal_master_recipes_v2';
+export const MASTER_RECIPES_KEY = 'food_journal_master_recipes_v2';
+const DELETED_SEED_IDS_KEY = 'food_journal_deleted_seed_ids_v1';
+
+function getDeletedSeedIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(DELETED_SEED_IDS_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? new Set(parsed) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function saveDeletedSeedIds(ids: Set<string>): void {
+  try {
+    localStorage.setItem(DELETED_SEED_IDS_KEY, JSON.stringify(Array.from(ids)));
+  } catch {
+    // ignore
+  }
+}
 
 // Seed initial recipes with Official Editorial Chef dishes + community dishes across all 6 categories
 function createInitialSeededRecipes(): Recipe[] {
@@ -19,7 +39,7 @@ function createInitialSeededRecipes(): Recipe[] {
       authorName: demoUser.displayName,
       authorAvatar: demoUser.avatarUrl,
       isPublic: true,
-      likesCount: 20 + (index * 7) % 35,
+      likesCount: 20 + ((index * 7) % 35),
       likedBy: ['demo_user_1'],
       comments: [
         {
@@ -27,12 +47,20 @@ function createInitialSeededRecipes(): Recipe[] {
           authorName: '手帐食客',
           authorAvatar: AVATAR_SVG_MAP.chef_girl_apron,
           content: '步骤详尽，火候标注太清晰了！跟着手帐做一次成功！',
-          createdAt: '2026-10-28'
-        }
-      ]
+          createdAt: '2026-10-28',
+        },
+      ],
     };
   });
-  return [...OFFICIAL_SEED_RECIPES, ...communitySeeded];
+  // Also seed initial personal starter recipes for guest experience (marked guest so guest journal isn't blank on first launch)
+  const guestStarter: Recipe[] = INITIAL_RECIPES.slice(0, 3).map((recipe) => ({
+    ...recipe,
+    id: `starter_${recipe.id}`,
+    ownerId: 'guest',
+    authorName: '本机主厨',
+    isPublic: false,
+  }));
+  return [...OFFICIAL_SEED_RECIPES, ...communitySeeded, ...guestStarter];
 }
 
 // Fallback subcategory deduction if an existing local record is missing it
@@ -82,19 +110,21 @@ function inferSubcategory(recipe: Recipe): string {
 export function getAllMasterRecipes(): Recipe[] {
   try {
     const raw = localStorage.getItem(MASTER_RECIPES_KEY);
-    if (!raw) {
-      const seeded = createInitialSeededRecipes();
+    const deletedSeedIds = getDeletedSeedIds();
+
+    if (raw === null) {
+      const seeded = createInitialSeededRecipes().filter((s) => !deletedSeedIds.has(s.id));
       localStorage.setItem(MASTER_RECIPES_KEY, JSON.stringify(seeded));
       return seeded;
     }
+
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      // Ensure all recipes have valid subCategory and ensure new seeded dessert recipes are present
+    if (Array.isArray(parsed)) {
       let changed = false;
       const existingIds = new Set(parsed.map((r: Recipe) => r.id));
       const seededList = createInitialSeededRecipes();
       const seededMap = new Map(seededList.map((s) => [s.id, s]));
-      
+
       const updated = parsed.map((r: Recipe) => {
         let next = r;
         if (!next.subCategory) {
@@ -109,10 +139,10 @@ export function getAllMasterRecipes(): Recipe[] {
         return next;
       });
 
-      // Merge newly seeded Official & Community recipes if missing
+      // Only add newly introduced seed recipes that have NEVER been deleted by the user
       const newlyAdded: Recipe[] = [];
       for (const seeded of seededList) {
-        if (!existingIds.has(seeded.id)) {
+        if (!existingIds.has(seeded.id) && !deletedSeedIds.has(seeded.id)) {
           newlyAdded.push(seeded);
           changed = true;
         }
@@ -120,11 +150,16 @@ export function getAllMasterRecipes(): Recipe[] {
       const mergedList = newlyAdded.length > 0 ? [...newlyAdded, ...updated] : updated;
 
       if (changed) {
-        localStorage.setItem(MASTER_RECIPES_KEY, JSON.stringify(mergedList));
+        try {
+          localStorage.setItem(MASTER_RECIPES_KEY, JSON.stringify(mergedList));
+        } catch {
+          // ignore write error during passive read
+        }
       }
       return mergedList;
     }
-    const seeded = createInitialSeededRecipes();
+
+    const seeded = createInitialSeededRecipes().filter((s) => !deletedSeedIds.has(s.id));
     localStorage.setItem(MASTER_RECIPES_KEY, JSON.stringify(seeded));
     return seeded;
   } catch (err) {
@@ -133,13 +168,29 @@ export function getAllMasterRecipes(): Recipe[] {
   }
 }
 
-export function saveAllMasterRecipes(recipes: Recipe[]): void {
+export function saveAllMasterRecipes(recipes: Recipe[]): boolean {
   try {
     localStorage.setItem(MASTER_RECIPES_KEY, JSON.stringify(recipes));
-    // Trigger custom event so other components update synchronously
+    // Trigger custom event so other components in same tab update synchronously
     window.dispatchEvent(new CustomEvent('recipes-updated', { detail: recipes }));
-  } catch (err) {
+    return true;
+  } catch (err: any) {
     console.error('Failed to save master recipes', err);
+    const isQuota =
+      err?.name === 'QuotaExceededError' ||
+      err?.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+      err?.code === 22 ||
+      err?.code === 1014;
+    if (isQuota) {
+      window.dispatchEvent(
+        new CustomEvent('storage-quota-exceeded', {
+          detail: {
+            message: '本地浏览器文本存储空间 (localStorage) 已满，建议导出 JSON 备份或移除超大图文。视频已自动改用大容量 IndexedDB 存储。',
+          },
+        })
+      );
+    }
+    return false;
   }
 }
 
@@ -149,7 +200,6 @@ export function saveAllMasterRecipes(recipes: Recipe[]): void {
 export function getUserRecipes(currentUser: UserProfile | null): Recipe[] {
   const all = getAllMasterRecipes();
   if (!currentUser) {
-    // If not logged in, return recipes marked as guest or initial recipes
     return all.filter((r) => !r.ownerId || r.ownerId === 'guest');
   }
   return all.filter((r) => r.ownerId === currentUser.uid);
@@ -190,8 +240,15 @@ export function saveUserRecipe(recipe: Recipe, currentUser: UserProfile | null):
     likesCount: recipe.likesCount ?? 0,
     likedBy: recipe.likedBy || [],
     comments: recipe.comments || [],
-    updatedAt: new Date().toISOString().slice(0, 10)
+    updatedAt: formatLocalDate(),
   };
+
+  // If user explicitly re-saves a seed ID, unmark it from deletedSeedIds
+  const deletedSeedIds = getDeletedSeedIds();
+  if (deletedSeedIds.has(enrichedRecipe.id)) {
+    deletedSeedIds.delete(enrichedRecipe.id);
+    saveDeletedSeedIds(deletedSeedIds);
+  }
 
   const index = all.findIndex((r) => r.id === recipe.id);
   let updatedList: Recipe[];
@@ -207,19 +264,157 @@ export function saveUserRecipe(recipe: Recipe, currentUser: UserProfile | null):
 }
 
 /**
- * Delete a recipe
+ * Delete a recipe (records seed IDs in deletedSeedIds so initial presets never resurrect)
  */
 export function deleteUserRecipe(id: string, currentUser: UserProfile | null): void {
   const all = getAllMasterRecipes();
+  const seededIds = new Set(createInitialSeededRecipes().map((s) => s.id));
+  let didDelete = false;
+
   const filtered = all.filter((r) => {
     if (r.id !== id) return true;
-    // Check permission: only owner can delete
-    if (currentUser && r.ownerId && r.ownerId !== currentUser.uid) {
-      return true; // Cannot delete other's recipe
+    if (currentUser && r.ownerId && r.ownerId !== 'guest' && r.ownerId !== currentUser.uid) {
+      return true; // Cannot delete another account's recipe
     }
+    didDelete = true;
     return false;
   });
+
+  if (didDelete && seededIds.has(id)) {
+    const deletedSeedIds = getDeletedSeedIds();
+    deletedSeedIds.add(id);
+    saveDeletedSeedIds(deletedSeedIds);
+  }
+
   saveAllMasterRecipes(filtered);
+}
+
+/**
+ * Validate whether an untrusted JSON object conforms to minimal Recipe schema
+ */
+function isValidRecipeObject(obj: unknown): obj is Recipe {
+  if (!obj || typeof obj !== 'object') return false;
+  const candidate = obj as Record<string, unknown>;
+  return (
+    typeof candidate.id === 'string' &&
+    candidate.id.trim().length > 0 &&
+    typeof candidate.title === 'string' &&
+    candidate.title.trim().length > 0 &&
+    Array.isArray(candidate.ingredients) &&
+    Array.isArray(candidate.steps)
+  );
+}
+
+/**
+ * Schema-validated import & merge by recipe ID into master storage (fixes BackupView legacy key bug)
+ */
+export function importRecipesToMasterStorage(
+  payload: unknown,
+  currentUser: UserProfile | null
+): { importedCount: number; updatedCount: number; skippedCount: number; persisted: boolean } {
+  let rawArray: unknown[] = [];
+  if (Array.isArray(payload)) {
+    rawArray = payload;
+  } else if (payload && typeof payload === 'object') {
+    const recObj = payload as Record<string, unknown>;
+    if (Array.isArray(recObj.recipes)) {
+      rawArray = recObj.recipes;
+    } else if (Array.isArray(recObj.masterRecipes)) {
+      rawArray = recObj.masterRecipes;
+    }
+  } else {
+    throw new Error('备份文件结构无效：需为食谱数组或包含 recipes 字段的备份对象');
+  }
+
+  const all = getAllMasterRecipes();
+  const byId = new Map<string, Recipe>(all.map((r) => [r.id, r]));
+  const deletedSeedIds = getDeletedSeedIds();
+  const targetOwnerId = currentUser ? currentUser.uid : 'guest';
+  const targetAuthorName = currentUser ? currentUser.displayName : '本机主厨';
+
+  let importedCount = 0;
+  let updatedCount = 0;
+  let skippedCount = 0;
+
+  for (const item of rawArray) {
+    if (!isValidRecipeObject(item)) {
+      skippedCount++;
+      continue;
+    }
+
+    const normalized: Recipe = {
+      ...item,
+      subCategory: item.subCategory || inferSubcategory(item),
+      ownerId: item.ownerId || targetOwnerId,
+      authorName: item.authorName || targetAuthorName,
+      createdAt: item.createdAt || formatLocalDate(),
+      updatedAt: item.updatedAt || formatLocalDate(),
+    };
+
+    // Ensure if importing into logged-in account from an old single-user backup (no ownerId or guest), active user sees it
+    if (currentUser && (!item.ownerId || item.ownerId === 'guest')) {
+      normalized.ownerId = currentUser.uid;
+      normalized.authorName = item.authorName || currentUser.displayName;
+    }
+
+    if (deletedSeedIds.has(normalized.id)) {
+      deletedSeedIds.delete(normalized.id);
+    }
+
+    if (byId.has(normalized.id)) {
+      byId.set(normalized.id, normalized);
+      updatedCount++;
+    } else {
+      byId.set(normalized.id, normalized);
+      importedCount++;
+    }
+  }
+
+  saveDeletedSeedIds(deletedSeedIds);
+  const merged = Array.from(byId.values());
+  const persisted = saveAllMasterRecipes(merged);
+  return { importedCount, updatedCount, skippedCount, persisted };
+}
+
+/**
+ * Restore initial classic recipes into master storage & active user's journal
+ */
+export function resetToInitialPresets(currentUser: UserProfile | null): Recipe[] {
+  try {
+    localStorage.removeItem(DELETED_SEED_IDS_KEY);
+  } catch {
+    // ignore
+  }
+
+  const existing = getAllMasterRecipes();
+  const seeded = createInitialSeededRecipes();
+  const byId = new Map<string, Recipe>(existing.map((r) => [r.id, r]));
+
+  for (const seed of seeded) {
+    byId.set(seed.id, seed);
+  }
+
+  // Also ensure the current logged-in user gets the 3 classic starter recipes in their own journal if missing
+  if (currentUser) {
+    const today = formatLocalDate();
+    for (const base of INITIAL_RECIPES.slice(0, 3)) {
+      const userStarterId = `preset_${currentUser.uid}_${base.id}`;
+      byId.set(userStarterId, {
+        ...base,
+        id: userStarterId,
+        ownerId: currentUser.uid,
+        authorName: currentUser.displayName,
+        authorAvatar: currentUser.avatarUrl,
+        isPublic: false,
+        createdAt: today,
+        updatedAt: today,
+      });
+    }
+  }
+
+  const finalMaster = Array.from(byId.values());
+  saveAllMasterRecipes(finalMaster);
+  return getUserRecipes(currentUser);
 }
 
 /**
@@ -227,6 +422,7 @@ export function deleteUserRecipe(id: string, currentUser: UserProfile | null): v
  */
 export function cloneRecipeToMyJournal(sourceRecipe: Recipe, currentUser: UserProfile): Recipe {
   const all = getAllMasterRecipes();
+  const today = formatLocalDate();
 
   const clonedId = 'recipe-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const cloned: Recipe = {
@@ -241,10 +437,10 @@ export function cloneRecipeToMyJournal(sourceRecipe: Recipe, currentUser: UserPr
     comments: [],
     originalSource: {
       recipeId: sourceRecipe.id,
-      authorName: sourceRecipe.authorName || '原作者'
+      authorName: sourceRecipe.authorName || '原作者',
     },
-    createdAt: new Date().toISOString().slice(0, 10),
-    updatedAt: new Date().toISOString().slice(0, 10)
+    createdAt: today,
+    updatedAt: today,
   };
 
   saveAllMasterRecipes([cloned, ...all]);
@@ -263,7 +459,7 @@ export function cloneMenuToMyJournal(menuRecipes: Recipe[], currentUser: UserPro
       .map((r) => r.originalSource!.recipeId)
   );
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = formatLocalDate();
   const newClones: Recipe[] = [];
 
   for (const sourceRecipe of menuRecipes) {
@@ -283,10 +479,10 @@ export function cloneMenuToMyJournal(menuRecipes: Recipe[], currentUser: UserPro
       comments: [],
       originalSource: {
         recipeId: sourceRecipe.id,
-        authorName: sourceRecipe.authorName || '食味手记官方主厨'
+        authorName: sourceRecipe.authorName || '食味手记官方主厨',
       },
       createdAt: today,
-      updatedAt: today
+      updatedAt: today,
     });
   }
 
@@ -322,7 +518,7 @@ export function toggleLikeRecipe(recipeId: string, currentUser: UserProfile | nu
   const updatedRecipe: Recipe = {
     ...recipe,
     likesCount: newLikesCount,
-    likedBy: newLikedBy
+    likedBy: newLikedBy,
   };
 
   const updatedAll = all.map((r) => (r.id === recipeId ? updatedRecipe : r));
@@ -344,13 +540,13 @@ export function addCommentToRecipe(recipeId: string, authorName: string, authorA
     authorName,
     authorAvatar,
     content: content.trim(),
-    createdAt: new Date().toISOString().slice(0, 10)
+    createdAt: formatLocalDate(),
   };
 
   const updatedComments = [...(recipe.comments || []), newComment];
   const updatedRecipe: Recipe = {
     ...recipe,
-    comments: updatedComments
+    comments: updatedComments,
   };
 
   const updatedAll = all.map((r) => (r.id === recipeId ? updatedRecipe : r));
@@ -373,7 +569,7 @@ export function migrateGuestRecipesToUser(user: UserProfile): number {
         ...r,
         ownerId: user.uid,
         authorName: user.displayName,
-        authorAvatar: user.avatarUrl
+        authorAvatar: user.avatarUrl,
       };
     }
     return r;
@@ -448,31 +644,20 @@ export function getBookmarkedSquareRecipes(currentUser: UserProfile | null): Rec
 }
 
 /**
- * Returns all recipes collected from others in Food Square:
- * 1. Recipes cloned/forked from others into user's handbooks (r.originalSource)
- * 2. Recipes explicitly bookmarked from Food Square
- * 3. Recipes liked by current user on the Food Square
+ * Returns all recipes collected from others in Food Square
  */
 export function getSquareFavoritesAndClones(currentUser: UserProfile | null): Recipe[] {
   const all = getAllMasterRecipes();
   const bookmarkedIds = new Set(getBookmarkedSquareRecipeIds(currentUser));
   const uid = currentUser?.uid || 'guest';
 
-  // Map to deduplicate by id
   const resultMap = new Map<string, Recipe>();
 
   all.forEach((recipe) => {
-    // 1. Cloned recipes in user's journal
-    const isUserClone = Boolean(
-      recipe.ownerId === uid && recipe.originalSource?.recipeId
-    );
-    // 2. Explicitly bookmarked
+    const isUserClone = Boolean(recipe.ownerId === uid && recipe.originalSource?.recipeId);
     const isBookmarked = bookmarkedIds.has(recipe.id);
-    // 3. Liked by user and authored by someone else
     const isLikedFromOther = Boolean(
-      currentUser && 
-      recipe.likedBy?.includes(currentUser.uid) && 
-      recipe.ownerId !== currentUser.uid
+      currentUser && recipe.likedBy?.includes(currentUser.uid) && recipe.ownerId !== currentUser.uid
     );
 
     if (isUserClone || isBookmarked || isLikedFromOther) {
@@ -498,7 +683,7 @@ export function purgeAllUserOwnedData(uid: string): void {
           return {
             ...r,
             likedBy: nextLikedBy,
-            likesCount: Math.max(0, (r.likesCount || 1) - 1)
+            likesCount: Math.max(0, (r.likesCount || 1) - 1),
           };
         }
         return r;
@@ -509,5 +694,3 @@ export function purgeAllUserOwnedData(uid: string): void {
     console.error('Failed to purge user owned data', err);
   }
 }
-
-

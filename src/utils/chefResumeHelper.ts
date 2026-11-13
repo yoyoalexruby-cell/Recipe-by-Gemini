@@ -4,6 +4,7 @@ import { UserLevelInfo } from '../types/membership';
 import { getCookingRecords } from './cookingLogStorage';
 import { getContestSubmissions } from './contestStorage';
 import { ChefMedal, getChefAchievements } from './achievementService';
+import { formatLocalDate } from './dateUtils';
 
 export type { ChefMedal };
 
@@ -104,6 +105,6 @@ export function buildChefResumeData(
     medals,
     masterpieces,
     culinaryMotto,
-    generatedDate: new Date().toISOString().slice(0, 10)
+    generatedDate: formatLocalDate()
   };
 }

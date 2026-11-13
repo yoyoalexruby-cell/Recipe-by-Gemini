@@ -2,6 +2,8 @@ import { ContestTheme, ContestSubmission } from '../types/contest';
 import { Recipe } from '../types/recipe';
 import { UserProfile } from '../types/auth';
 import { saveUserRecipe } from './multiUserStorage';
+import { AVATAR_SVG_MAP } from './avatarGraphics';
+import { formatLocalDate } from './dateUtils';
 
 const CONTEST_STORAGE_KEY = 'culinary_contest_submissions_v2';
 
@@ -299,9 +301,9 @@ export function saveContestSubmission(
 ): ContestSubmission {
   const currentList = getContestSubmissions();
   const authorName = currentUser?.displayName || '私房小厨神';
-  const authorAvatar = currentUser?.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80';
+  const authorAvatar = currentUser?.avatarUrl || AVATAR_SVG_MAP.chef_boy_cap;
   const authorId = currentUser?.uid || `guest_${Date.now()}`;
-  const now = new Date().toISOString().slice(0, 10);
+  const now = formatLocalDate();
 
   // Default fallback recipeData if user uploaded photos & story directly
   const recipeData: Recipe = submission.recipeData || {
@@ -421,7 +423,7 @@ export function rateContestSubmission(
       authorAvatar: currentUser?.avatarUrl,
       score: thisVoteScore,
       content: scores.comment.trim(),
-      createdAt: new Date().toISOString().slice(0, 10)
+      createdAt: formatLocalDate()
     });
   }
 
@@ -450,7 +452,7 @@ export function rateContestSubmission(
  * One-Click Clone a Contest Entry into the Current User's Personal Journal
  */
 export function cloneContestToUserJournal(submission: ContestSubmission, currentUser: UserProfile | null): Recipe {
-  const now = new Date().toISOString().slice(0, 10);
+  const now = formatLocalDate();
   const clonedRecipe: Recipe = {
     ...submission.recipeData,
     id: `cloned_contest_${Date.now()}`,

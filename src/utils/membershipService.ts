@@ -2,6 +2,7 @@ import { UserLevelInfo, UserTask, LEVEL_DEFINITIONS } from '../types/membership'
 import { UserProfile } from '../types/auth';
 import { getCookingRecords } from './cookingLogStorage';
 import { getContestSubmissions } from './contestStorage';
+import { formatLocalDate } from './dateUtils';
 
 const CLAIMED_TASKS_KEY = 'culinary_claimed_tasks_v1';
 const DAILY_CHECKIN_KEY = 'culinary_daily_checkin_v1';
@@ -30,7 +31,7 @@ export function claimTaskReward(taskId: string): boolean {
 
 export function checkIsDailyCheckedIn(): boolean {
   try {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = formatLocalDate();
     const last = localStorage.getItem(DAILY_CHECKIN_KEY);
     return last === today;
   } catch {
@@ -42,7 +43,7 @@ export function performDailyCheckin(): { success: boolean; expGained: number } {
   if (checkIsDailyCheckedIn()) {
     return { success: false, expGained: 0 };
   }
-  const today = new Date().toISOString().slice(0, 10);
+  const today = formatLocalDate();
   try {
     localStorage.setItem(DAILY_CHECKIN_KEY, today);
     claimTaskReward(`daily_checkin_${today}`);
