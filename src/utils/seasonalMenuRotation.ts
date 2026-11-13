@@ -1,4 +1,5 @@
 import { OfficialCuratedMenu } from '../data/officialSquareSeed';
+import { formatLocalDate } from './dateUtils';
 
 const AUTO_ROTATION_ENABLED_KEY = 'food_journal_auto_menu_rotation_v1';
 
@@ -82,35 +83,26 @@ export function getISOWeekAndBounds(targetDate: Date): {
   sunday: Date;
   nextMonday: Date;
 } {
-  const d = new Date(Date.UTC(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate()));
-  const dayNum = d.getUTCDay() || 7; // Monday = 1 .. Sunday = 7
+  const d = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
+  const dayNum = d.getDay() || 7; // Monday = 1 .. Sunday = 7
 
-  const monday = new Date(d);
-  monday.setUTCDate(d.getUTCDate() - (dayNum - 1));
+  const monday = new Date(d.getFullYear(), d.getMonth(), d.getDate() - (dayNum - 1));
+  const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6);
+  const nextMonday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 7);
 
-  const sunday = new Date(monday);
-  sunday.setUTCDate(monday.getUTCDate() + 6);
-
-  const nextMonday = new Date(monday);
-  nextMonday.setUTCDate(monday.getUTCDate() + 7);
-
-  // Thursday of current ISO week determines ISO year & week number
-  const thursday = new Date(d);
-  thursday.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(thursday.getUTCFullYear(), 0, 1));
-  const isoWeek = Math.ceil(((thursday.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+  // Thursday of current ISO week determines ISO year & week number (using UTC day diff to avoid DST hour skew)
+  const thursday = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 4 - dayNum);
+  const thursdayUtc = Date.UTC(thursday.getFullYear(), thursday.getMonth(), thursday.getDate());
+  const yearStartUtc = Date.UTC(thursday.getFullYear(), 0, 1);
+  const isoWeek = Math.ceil(((thursdayUtc - yearStartUtc) / 86400000 + 1) / 7);
 
   return {
-    isoYear: thursday.getUTCFullYear(),
+    isoYear: thursday.getFullYear(),
     isoWeek,
     monday,
     sunday,
     nextMonday
   };
-}
-
-function formatUTCDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
 }
 
 export function isAutoMenuRotationEnabled(): boolean {
@@ -146,12 +138,9 @@ export function computeWeeklyMenuRotation(
 
   const { isoYear, isoWeek, monday, sunday, nextMonday } = getISOWeekAndBounds(referenceDate);
   // Use Thursday of the week to determine the dominant month of that week
-  const midWeek = new Date(monday);
-  midWeek.setUTCDate(monday.getUTCDate() + 3);
-  const activeMonth = midWeek.getUTCMonth() + 1;
-  const solarTerm = getSolarTermForDate(
-    new Date(midWeek.getUTCFullYear(), midWeek.getUTCMonth(), midWeek.getUTCDate())
-  );
+  const midWeek = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 3);
+  const activeMonth = midWeek.getMonth() + 1;
+  const solarTerm = getSolarTermForDate(midWeek);
 
   // Candidate pool for weekly auto-spotlight:
   // Prioritize menus matching activeMonth + evergreen lifestyle menus so every consecutive week rotates cleanly
@@ -229,13 +218,13 @@ export function computeWeeklyMenuRotation(
   return {
     isoYear,
     isoWeek,
-    mondayDateStr: formatUTCDate(monday),
-    sundayDateStr: formatUTCDate(sunday),
+    mondayDateStr: formatLocalDate(monday),
+    sundayDateStr: formatLocalDate(sunday),
     month: activeMonth,
     solarTerm,
     spotlightMenu,
     orderedMenus,
-    nextMondayDateStr: formatUTCDate(nextMonday)
+    nextMondayDateStr: formatLocalDate(nextMonday)
   };
 }
 

@@ -1,6 +1,7 @@
 import { CookingRecord } from '../types/cookingLog';
 import { Recipe } from '../types/recipe';
 import { UserProfile } from '../types/auth';
+import { formatLocalDate } from './dateUtils';
 
 const STORAGE_PREFIX = 'food_journal_cooking_records_v1_';
 
@@ -15,7 +16,8 @@ function createInitialRecordsFromRecipes(recipes: Recipe[]): CookingRecord[] {
   const records: CookingRecord[] = [];
   
   recipes.forEach((recipe, idx) => {
-    const date = recipe.review?.cookDate || recipe.createdAt?.slice(0, 10);
+    const rawDate = recipe.review?.cookDate || recipe.createdAt;
+    const date = rawDate ? formatLocalDate(rawDate) : '';
     if (date) {
       records.push({
         id: `rec-seed-${recipe.id}-${idx}`,
@@ -63,7 +65,8 @@ export function getCookingRecords(user: UserProfile | null, recipes: Recipe[] = 
       const merged = [...parsed];
 
       for (const recipe of recipes) {
-        const date = recipe.review?.cookDate || recipe.createdAt?.slice(0, 10);
+        const rawDate = recipe.review?.cookDate || recipe.createdAt;
+        const date = rawDate ? formatLocalDate(rawDate) : '';
         if (date && !existingRecipeIdsAndDates.has(`${recipe.id}_${date}`)) {
           merged.push({
             id: `rec-sync-${recipe.id}-${Date.now()}`,
@@ -109,15 +112,19 @@ export function saveCookingRecord(
 ): CookingRecord[] {
   const key = getStorageKey(user);
   const current = getCookingRecords(user);
+  const normalizedRecord: CookingRecord = {
+    ...record,
+    cookDate: formatLocalDate(record.cookDate || new Date())
+  };
   
-  const existingIndex = current.findIndex(r => r.id === record.id);
+  const existingIndex = current.findIndex(r => r.id === normalizedRecord.id);
   let updated: CookingRecord[];
 
   if (existingIndex >= 0) {
     updated = [...current];
-    updated[existingIndex] = record;
+    updated[existingIndex] = normalizedRecord;
   } else {
-    updated = [record, ...current];
+    updated = [normalizedRecord, ...current];
   }
 
   localStorage.setItem(key, JSON.stringify(updated));
@@ -151,15 +158,16 @@ export function markRecipeCookedOnDate(
   user: UserProfile | null = null,
   dinerFeedback?: string
 ): CookingRecord {
+  const normalizedDate = formatLocalDate(dateStr || new Date());
   const newRecord: CookingRecord = {
     id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     recipeId: recipe.id,
     recipeTitle: recipe.title,
     category: recipe.category,
     subCategory: recipe.subCategory,
-    cookDate: dateStr,
+    cookDate: normalizedDate,
     coverImage: recipe.coverImage,
-    notes: notes || recipe.review?.tastingNotes || `记录在 ${dateStr} 烹饪了这道美味`,
+    notes: notes || recipe.review?.tastingNotes || `记录在 ${normalizedDate} 烹饪了这道美味`,
     rating: rating || recipe.review?.ratings?.taste || 5,
     dinerFeedback: dinerFeedback || recipe.review?.dinerFeedback,
     servings: recipe.baseServings,

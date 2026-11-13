@@ -125,9 +125,7 @@ export const CalendarJournalView: React.FC<CalendarJournalViewProps> = ({
     for (let i = startDayOfWeek - 1; i >= 0; i--) {
       const dayNum = prevMonthLastDay - i;
       const prevDate = new Date(currentYear, currentMonth - 1, dayNum);
-      const m = String(prevDate.getMonth() + 1).padStart(2, '0');
-      const d = String(dayNum).padStart(2, '0');
-      const dateStr = `${prevDate.getFullYear()}-${m}-${d}`;
+      const dateStr = formatLocalDate(prevDate);
       cells.push({
         dateStr,
         dayNumber: dayNum,
@@ -138,9 +136,8 @@ export const CalendarJournalView: React.FC<CalendarJournalViewProps> = ({
 
     // Fill current month days
     for (let i = 1; i <= totalDaysInMonth; i++) {
-      const m = String(currentMonth + 1).padStart(2, '0');
-      const d = String(i).padStart(2, '0');
-      const dateStr = `${currentYear}-${m}-${d}`;
+      const curDate = new Date(currentYear, currentMonth, i);
+      const dateStr = formatLocalDate(curDate);
       cells.push({
         dateStr,
         dayNumber: i,
@@ -157,9 +154,7 @@ export const CalendarJournalView: React.FC<CalendarJournalViewProps> = ({
       const fillCount = 35 - cells.length;
       for (let i = 1; i <= fillCount; i++) {
         const nextDate = new Date(currentYear, currentMonth + 1, i);
-        const m = String(nextDate.getMonth() + 1).padStart(2, '0');
-        const d = String(i).padStart(2, '0');
-        const dateStr = `${nextDate.getFullYear()}-${m}-${d}`;
+        const dateStr = formatLocalDate(nextDate);
         cells.push({
           dateStr,
           dayNumber: i,
@@ -170,9 +165,7 @@ export const CalendarJournalView: React.FC<CalendarJournalViewProps> = ({
     } else {
       for (let i = 1; i <= remainingCells; i++) {
         const nextDate = new Date(currentYear, currentMonth + 1, i);
-        const m = String(nextDate.getMonth() + 1).padStart(2, '0');
-        const d = String(i).padStart(2, '0');
-        const dateStr = `${nextDate.getFullYear()}-${m}-${d}`;
+        const dateStr = formatLocalDate(nextDate);
         cells.push({
           dateStr,
           dayNumber: i,

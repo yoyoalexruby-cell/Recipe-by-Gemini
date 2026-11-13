@@ -58,10 +58,10 @@ export function buildChefResumeData(
 
   // Unique cooking days from logs and recipes
   const dates = new Set<string>();
-  cookingLogs.forEach((log) => dates.add(log.cookDate));
+  cookingLogs.forEach((log) => dates.add(formatLocalDate(log.cookDate)));
   recipes.forEach((r) => {
-    if (r.review?.cookDate) dates.add(r.review.cookDate);
-    else if (r.createdAt) dates.add(r.createdAt.slice(0, 10));
+    if (r.review?.cookDate) dates.add(formatLocalDate(r.review.cookDate));
+    else if (r.createdAt) dates.add(formatLocalDate(r.createdAt));
   });
 
   // Unified Medals Calculation

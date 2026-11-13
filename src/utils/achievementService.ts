@@ -4,6 +4,7 @@ import { UserLevelInfo } from '../types/membership';
 import { getCookingRecords } from './cookingLogStorage';
 import { getContestSubmissions } from './contestStorage';
 import { checkIsDailyCheckedIn } from './membershipService';
+import { formatLocalDate } from './dateUtils';
 
 export interface ChefMedal {
   id: string;
@@ -54,10 +55,10 @@ export function getChefAchievements(
 
   // Unique cooking days from calendar and recipe records
   const uniqueDates = new Set<string>();
-  cookingLogs.forEach((log) => uniqueDates.add(log.cookDate));
+  cookingLogs.forEach((log) => uniqueDates.add(formatLocalDate(log.cookDate)));
   recipes.forEach((r) => {
-    if (r.review?.cookDate) uniqueDates.add(r.review.cookDate);
-    else if (r.createdAt) uniqueDates.add(r.createdAt.slice(0, 10));
+    if (r.review?.cookDate) uniqueDates.add(formatLocalDate(r.review.cookDate));
+    else if (r.createdAt) uniqueDates.add(formatLocalDate(r.createdAt));
   });
 
   // Calculate checkin streak
@@ -89,7 +90,7 @@ export function getChefAchievements(
       category: 'recipe',
       rarity: 'common',
       isUnlocked: recipes.length >= 1,
-      unlockedAt: recipes.length >= 1 ? (recipes[0]?.createdAt?.slice(0, 10) || '已达成') : undefined,
+      unlockedAt: recipes.length >= 1 ? (recipes[0]?.createdAt ? formatLocalDate(recipes[0].createdAt) : '已达成') : undefined,
       progress: {
         current: Math.min(recipes.length, 1),
         target: 1,
