@@ -2,7 +2,7 @@ import { Recipe } from '../types/recipe';
 import { INITIAL_RECIPES } from '../data/initialRecipes';
 import { formatLocalDate } from './dateUtils';
 
-const STORAGE_KEY = 'food_journal_recipes_v1';
+const STORAGE_KEY = 'food_journal_master_recipes_v2';
 const PANTRY_CHECKED_KEY = 'food_journal_pantry_v1';
 
 export function getStoredRecipes(): Recipe[] {
@@ -26,6 +26,7 @@ export function getStoredRecipes(): Recipe[] {
 export function saveStoredRecipes(recipes: Recipe[]): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(recipes));
+    window.dispatchEvent(new CustomEvent('recipes-updated', { detail: recipes }));
   } catch (err) {
     console.error('Failed to save recipes to localStorage', err);
   }
@@ -96,11 +97,12 @@ export async function compressImageFile(file: File, maxDimension = 1200, quality
 }
 
 /**
- * Downloads a versioned v2.0 backup of recipes
+ * Downloads a versioned 1.2.0 backup of recipes
  */
 export function exportRecipesBackup(recipes: Recipe[]) {
   const payload = {
-    version: '2.0',
+    version: '1.2.0',
+    storageKey: STORAGE_KEY,
     exportedAt: new Date().toISOString(),
     totalRecipes: recipes.length,
     recipes,
@@ -110,7 +112,7 @@ export function exportRecipesBackup(recipes: Recipe[]) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `食味手记_食谱备份_${formatLocalDate()}.json`;
+  a.download = `食味手记_食谱备份_v1.2.0_${formatLocalDate()}.json`;
   a.click();
   URL.revokeObjectURL(url);
 }
