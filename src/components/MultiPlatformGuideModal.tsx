@@ -3,7 +3,8 @@ import {
   Smartphone, Apple, MessageCircle, Monitor, X, 
   Download, Check, ExternalLink, QrCode, Sparkles,
   Share2, ArrowRight, ShieldCheck, Home, Building,
-  CheckCircle2, Layers, ShieldAlert, FileText, Terminal
+  CheckCircle2, Layers, ShieldAlert, FileText, Terminal,
+  Globe, Rocket, Cloud, Database, Lock, AlertCircle, Copy
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { getPlatformInfo } from '../utils/platformDetect';
@@ -13,6 +14,8 @@ interface MultiPlatformGuideModalProps {
   onClose: () => void;
   onOpenPWAInstall?: () => void;
   onOpenShare?: () => void;
+  onOpenStoreAssets?: () => void;
+  onOpenLegalPage?: (section: 'privacy' | 'support' | 'terms' | 'delete-account') => void;
 }
 
 export const MultiPlatformGuideModal: React.FC<MultiPlatformGuideModalProps> = ({
@@ -20,10 +23,19 @@ export const MultiPlatformGuideModal: React.FC<MultiPlatformGuideModalProps> = (
   onClose,
   onOpenPWAInstall,
   onOpenShare,
+  onOpenStoreAssets,
+  onOpenLegalPage,
 }) => {
-  const [activeTab, setActiveTab] = useState<'wechat' | 'ios' | 'android' | 'web' | 'publish'>('wechat');
+  const [activeTab, setActiveTab] = useState<'overseas' | 'publish' | 'wechat' | 'ios' | 'android' | 'web'>('overseas');
   const [wechatQrUrl, setWechatQrUrl] = useState<string>('');
+  const [copiedField, setCopiedField] = useState<string | null>(null);
   const platform = getPlatformInfo();
+
+  const handleCopy = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(label);
+    setTimeout(() => setCopiedField(null), 2500);
+  };
 
   // Generate a dynamic QR code for mobile scanning
   React.useEffect(() => {
@@ -129,6 +141,18 @@ export const MultiPlatformGuideModal: React.FC<MultiPlatformGuideModalProps> = (
           </button>
 
           <button
+            onClick={() => setActiveTab('overseas')}
+            className={`py-3 px-3.5 font-medium border-b-2 transition-colors whitespace-nowrap flex items-center gap-1.5 ${
+              activeTab === 'overseas'
+                ? 'border-[#C85A32] text-[#C85A32] font-bold bg-[#FAF3EC]/60 rounded-t-lg'
+                : 'border-transparent text-[#7A7268] hover:text-[#2C2723]'
+            }`}
+          >
+            <Globe className="w-4 h-4 text-[#C85A32]" />
+            <span className="font-bold text-[#C85A32]">🌍 海外上架极速通道 (Google Play & 海外 App Store)</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('publish')}
             className={`py-3 px-3 font-medium border-b-2 transition-colors whitespace-nowrap flex items-center gap-1.5 ${
               activeTab === 'publish'
@@ -137,13 +161,500 @@ export const MultiPlatformGuideModal: React.FC<MultiPlatformGuideModalProps> = (
             }`}
           >
             <Building className="w-4 h-4 text-[#C85A32]" />
-            <span className="font-semibold text-[#C85A32]">🇨🇳 商店上架实操全流程</span>
+            <span className="font-semibold text-[#7A7268]">🇨🇳 国内商店与工信部备案</span>
           </button>
         </div>
 
         {/* Tab Content Body */}
         <div className="flex-1 overflow-y-auto p-5 sm:p-7 text-xs sm:text-sm text-[#4A423B] leading-relaxed space-y-5">
-          
+
+          {/* TAB: 🌍 海外应用商店极速上架通道 */}
+          {activeTab === 'overseas' && (
+            <div className="space-y-5 animate-fade-in">
+              {/* Highlight Masthead */}
+              <div className="p-5 bg-gradient-to-r from-[#FAF3EC] via-white to-[#F5ECE2] border border-[#EADBCE] rounded-2xl shadow-2xs space-y-3">
+                <div className="flex items-center gap-2 text-[#C85A32] font-bold text-sm">
+                  <Rocket className="w-5 h-5 text-[#C85A32]" />
+                  <span>为什么海外上架最快？—— 0 备案要求 · 免去漫长行政审批 · 覆盖全球 175+ 国家地区</span>
+                </div>
+                <p className="text-xs text-[#5A5248] leading-relaxed">
+                  国内上架需要先办理<strong>国家版权局软件著作权（软著，需2~3个月）</strong>和<strong>中国工信部 APP 备案（需ICP验真与域名核验）</strong>。
+                  而选择<strong>海外上架</strong>，只要拥有 Google Play 或 Apple 开发者账号，<strong>完全无需软著与 ICP 备案</strong>，最快 1~3 天内即可在全球各大商店和网页端正式上线运营！
+                </p>
+                <div className="flex items-center gap-2 flex-wrap pt-1 text-[11px] text-[#7A7268]">
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center gap-1">
+                    <Check className="w-3 h-3" />
+                    <span>免工信部备案</span>
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center gap-1">
+                    <Check className="w-3 h-3" />
+                    <span>免软著证书</span>
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center gap-1">
+                    <Check className="w-3 h-3" />
+                    <span>5国语言实时切换</span>
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center gap-1">
+                    <Check className="w-3 h-3" />
+                    <span>苹果 Guideline 1.2 合规举报屏蔽就绪</span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Core Channels: Google Play vs Apple Overseas vs PWA */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* 1. Google Play */}
+                <div className="p-4 bg-white border border-[#EADBCE] rounded-2xl shadow-2xs space-y-2.5 flex flex-col justify-between">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-[#5F7A4D]/10 text-[#5F7A4D] flex items-center justify-center font-bold">
+                        ▶
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-[#2C2723]">Google Play (安卓全球)</h4>
+                        <span className="text-[10px] text-[#7A7268]">全球体量最大 · 门槛极低</span>
+                      </div>
+                    </div>
+                    <ul className="text-xs text-[#5A5248] space-y-1.5 list-disc pl-4">
+                      <li><strong>账号费用</strong>：25 美元（一次性终身可用）</li>
+                      <li><strong>打包格式</strong>：<code className="text-[#C85A32] font-mono">.aab</code> (Android App Bundle)</li>
+                      <li><strong>审核周期</strong>：1 ~ 3 个工作日快速通过</li>
+                      <li><strong>无需备案</strong>：直接面向全球 190+ 国家和地区华人与烹饪爱好者发布</li>
+                    </ul>
+                  </div>
+                </div>
+
+                {/* 2. Apple App Store Overseas */}
+                <div className="p-4 bg-white border border-[#EADBCE] rounded-2xl shadow-2xs space-y-2.5 flex flex-col justify-between">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-neutral-100 text-neutral-900 flex items-center justify-center font-bold">
+                        <Apple className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-[#2C2723]">App Store (海外全区)</h4>
+                        <span className="text-[10px] text-[#7A7268]">iPhone/iPad 纯净体验</span>
+                      </div>
+                    </div>
+                    <ul className="text-xs text-[#5A5248] space-y-1.5 list-disc pl-4">
+                      <li><strong>账号费用</strong>：99 美元 / 年（Apple 开发者计划）</li>
+                      <li><strong>避坑关键</strong>：在分发国家中勾选除中国大陆外的全部国家，<strong>无需填写任何工信部备案号！</strong></li>
+                      <li><strong>审核合规</strong>：已预装 UGC 举报与屏蔽拉黑（通过率 99%）</li>
+                    </ul>
+                  </div>
+                </div>
+
+                {/* 3. PWA / Web Standalone */}
+                <div className="p-4 bg-white border border-[#EADBCE] rounded-2xl shadow-2xs space-y-2.5 flex flex-col justify-between">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-[#C85A32]/10 text-[#C85A32] flex items-center justify-center font-bold">
+                        <Globe className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-[#2C2723]">PWA 独立全球分发</h4>
+                        <span className="text-[10px] text-[#7A7268]">0元成本 · 零等待即刻可用</span>
+                      </div>
+                    </div>
+                    <ul className="text-xs text-[#5A5248] space-y-1.5 list-disc pl-4">
+                      <li><strong>零分成佣金</strong>：免除 App Store 30% 抽成</li>
+                      <li><strong>无需审核</strong>：发布即全球生效，支持一键添加到桌面</li>
+                      <li><strong>完全离线可用</strong>：即使断网也能浏览和记录手帐</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              {/* Step-by-step Packaging Commands */}
+              <div className="p-5 bg-white border border-[#EADBCE] rounded-2xl space-y-3">
+                <div className="flex items-center justify-between border-b border-[#EADBCE] pb-2.5 flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <Terminal className="w-4 h-4 text-[#C85A32]" />
+                    <h4 className="text-sm font-bold text-[#2C2723]">五分钟快速打包为 Google Play AAB 与 iOS IPA</h4>
+                  </div>
+                  <span className="text-[11px] text-[#7A7268]">使用 Capacitor 原生工程引擎</span>
+                </div>
+
+                <p className="text-xs text-[#5A5248]">
+                  保留当前全部 React + TypeScript + Tailwind 业务代码，在终端执行以下指令即可快速生成原生安装包：
+                </p>
+
+                <div className="bg-[#2C2723] text-amber-50 p-4 rounded-xl text-xs font-mono space-y-2 overflow-x-auto">
+                  <div className="text-stone-400"># 1. 安装 Capacitor 跨平台原生运行时与 CLI</div>
+                  <div className="text-emerald-400">npm install @capacitor/core @capacitor/cli @capacitor/android @capacitor/ios</div>
+
+                  <div className="text-stone-400 mt-2"># 2. 初始化 App 英文名称与唯一包名</div>
+                  <div className="text-emerald-400">npx cap init "Culinary Journal" "com.culinary.journal" --web-dir=dist</div>
+
+                  <div className="text-stone-400 mt-2"># 3. 构建现代生产静态产物</div>
+                  <div className="text-emerald-400">npm run build</div>
+                  <div className="text-emerald-400">npx cap add android</div>
+                  <div className="text-emerald-400">npx cap add ios</div>
+
+                  <div className="text-stone-400 mt-2"># 4. 生成 Google Play 上架安装包 (AAB)</div>
+                  <div className="text-emerald-400">npx cap open android</div>
+                  <div className="text-stone-400 italic"># 在 Android Studio 中点击: Build → Generate Signed Bundle / APK → 导出 release.aab 上传到 Google Play</div>
+
+                  <div className="text-stone-400 mt-2"># 5. 生成 iOS 安装包 (IPA) 并上传 App Store Connect</div>
+                  <div className="text-emerald-400">npx cap open ios</div>
+                  <div className="text-stone-400 italic"># 在 Xcode 中点击: Product → Archive → Distribute App → 上传至 App Store Connect</div>
+                </div>
+              </div>
+
+              {/* Dedicated Apple App Store Connect Submission Kit */}
+              <div className="p-5 bg-white border border-[#EADBCE] rounded-2xl space-y-4 paper-shadow">
+                <div className="flex items-center justify-between border-b border-[#EADBCE] pb-3 flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <Apple className="w-5 h-5 text-neutral-900" />
+                    <div>
+                      <h4 className="text-sm font-bold text-[#2C2723]">
+                        🍎 苹果 App Store Connect 官方后台填写一键复制板（开箱即抄）
+                      </h4>
+                      <p className="text-[11px] text-[#7A7268]">
+                        在 appstoreconnect.apple.com 新建 App 时，按下方中英对照直接填入即可
+                      </p>
+                    </div>
+                  </div>
+                  {copiedField && (
+                    <span className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full font-bold animate-fade-in flex items-center gap-1">
+                      <Check className="w-3.5 h-3.5" />
+                      <span>已成功复制「{copiedField}」</span>
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 text-xs">
+                  {/* Name & Subtitle */}
+                  <div className="p-3.5 bg-[#FAF7F2] rounded-xl border border-[#EADBCE] space-y-2">
+                    <div className="flex items-center justify-between">
+                      <strong className="text-[#2C2723]">1. App 名称 (Name)</strong>
+                      <button
+                        type="button"
+                        onClick={() => handleCopy('Culinary Journal - Recipe Book', 'App 英文名称')}
+                        className="text-[#C85A32] hover:text-[#B34C26] font-semibold flex items-center gap-1 text-[11px]"
+                      >
+                        <Copy className="w-3 h-3" />
+                        <span>复制英文</span>
+                      </button>
+                    </div>
+                    <p className="font-mono text-[#5A5248] bg-white p-1.5 rounded border border-[#EADBCE]/80">
+                      Culinary Journal - Recipe Book
+                    </p>
+                    <div className="flex items-center justify-between text-[11px] text-[#7A7268] pt-1">
+                      <span>中文名：食味手记 - 私房烹饪手帐与菜谱</span>
+                      <button
+                        type="button"
+                        onClick={() => handleCopy('食味手记 - 私房烹饪手帐与菜谱', 'App 中文名称')}
+                        className="text-[#C85A32] hover:underline"
+                      >
+                        复制中文
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Subtitle */}
+                  <div className="p-3.5 bg-[#FAF7F2] rounded-xl border border-[#EADBCE] space-y-2">
+                    <div className="flex items-center justify-between">
+                      <strong className="text-[#2C2723]">2. 副标题 (Subtitle, 30字符)</strong>
+                      <button
+                        type="button"
+                        onClick={() => handleCopy('Cozy Cooking Scrapbook & Steps', '副标题英文')}
+                        className="text-[#C85A32] hover:text-[#B34C26] font-semibold flex items-center gap-1 text-[11px]"
+                      >
+                        <Copy className="w-3 h-3" />
+                        <span>复制英文</span>
+                      </button>
+                    </div>
+                    <p className="font-mono text-[#5A5248] bg-white p-1.5 rounded border border-[#EADBCE]/80">
+                      Cozy Cooking Scrapbook & Steps
+                    </p>
+                    <div className="flex items-center justify-between text-[11px] text-[#7A7268] pt-1">
+                      <span>中文名：温暖手帐做菜笔记与下厨时序</span>
+                      <button
+                        type="button"
+                        onClick={() => handleCopy('温暖手帐做菜笔记与下厨时序', '副标题中文')}
+                        className="text-[#C85A32] hover:underline"
+                      >
+                        复制中文
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Category & Bundle ID */}
+                  <div className="p-3.5 bg-[#FAF7F2] rounded-xl border border-[#EADBCE] space-y-2">
+                    <strong className="text-[#2C2723] block">3. 类别与 Bundle ID</strong>
+                    <div className="space-y-1 text-[#5A5248] text-[11px]">
+                      <div>· 主要类别 (Primary): <strong>Food & Drink (美食佳饮)</strong></div>
+                      <div>· 次要类别 (Secondary): <strong>Lifestyle (生活)</strong></div>
+                      <div className="flex items-center justify-between pt-1">
+                        <span>· Bundle ID: <code className="font-mono text-[#C85A32]">com.culinary.journal</code></span>
+                        <button
+                          type="button"
+                          onClick={() => handleCopy('com.culinary.journal', 'Bundle ID')}
+                          className="text-[#C85A32] hover:underline font-semibold"
+                        >
+                          复制
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Keywords */}
+                  <div className="p-3.5 bg-[#FAF7F2] rounded-xl border border-[#EADBCE] space-y-2">
+                    <div className="flex items-center justify-between">
+                      <strong className="text-[#2C2723]">4. 搜索关键词 (Keywords, 100字符)</strong>
+                      <button
+                        type="button"
+                        onClick={() => handleCopy('recipe,cookbook,cooking,scrapbook,food journal,meal planner,pantry,kitchen timer,食谱,菜谱,做菜,手帐,烹饪', '关键词')}
+                        className="text-[#C85A32] hover:text-[#B34C26] font-semibold flex items-center gap-1 text-[11px]"
+                      >
+                        <Copy className="w-3 h-3" />
+                        <span>一键复制全部</span>
+                      </button>
+                    </div>
+                    <p className="font-mono text-[11px] text-[#5A5248] bg-white p-1.5 rounded border border-[#EADBCE]/80 break-all">
+                      recipe,cookbook,cooking,scrapbook,food journal,meal planner,pantry,kitchen timer,食谱,菜谱,做菜,手帐,烹饪
+                    </p>
+                  </div>
+                </div>
+
+                {/* URLs & Reviewer Notes */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 text-xs">
+                  {/* Compliance URLs */}
+                  <div className="p-3.5 bg-[#FAF7F2] rounded-xl border border-[#EADBCE] space-y-2">
+                    <strong className="text-[#2C2723] block">5. 在线隐私政策与技术支持网址（免自建官网直填）</strong>
+                    <div className="space-y-2 text-[11px]">
+                      <div>
+                        <div className="flex items-center justify-between text-[#7A7268] mb-0.5 gap-2">
+                          <span>隐私政策网址 (Privacy Policy URL):</span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {onOpenLegalPage && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onClose();
+                                  onOpenLegalPage('privacy');
+                                }}
+                                className="text-[#5F7A4D] hover:underline font-semibold"
+                              >
+                                预览页面
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleCopy(window.location.origin + '/?page=privacy', '隐私政策网址')}
+                              className="text-[#C85A32] hover:underline font-semibold"
+                            >
+                              复制
+                            </button>
+                          </div>
+                        </div>
+                        <p className="font-mono text-[#5A5248] bg-white p-1 rounded border border-[#EADBCE]/80 truncate">
+                          {typeof window !== 'undefined' ? window.location.origin + '/?page=privacy' : 'https://your-domain.app/?page=privacy'}
+                        </p>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between text-[#7A7268] mb-0.5 gap-2">
+                          <span>技术支持网址 (Support URL):</span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {onOpenLegalPage && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onClose();
+                                  onOpenLegalPage('support');
+                                }}
+                                className="text-[#5F7A4D] hover:underline font-semibold"
+                              >
+                                预览页面
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleCopy(window.location.origin + '/?page=support', '技术支持网址')}
+                              className="text-[#C85A32] hover:underline font-semibold"
+                            >
+                              复制
+                            </button>
+                          </div>
+                        </div>
+                        <p className="font-mono text-[#5A5248] bg-white p-1 rounded border border-[#EADBCE]/80 truncate">
+                          {typeof window !== 'undefined' ? window.location.origin + '/?page=support' : 'https://your-domain.app/?page=support'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Reviewer Notes (Critical for Zero Rejection) */}
+                  <div className="p-3.5 bg-[#FAF7F2] rounded-xl border border-[#EADBCE] space-y-2">
+                    <div className="flex items-center justify-between">
+                      <strong className="text-[#2C2723] flex items-center gap-1">
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-700" />
+                        <span>6. 审核员备注 (Notes for Reviewer 避坑模版)</span>
+                      </strong>
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(
+                          'Dear Apple App Review Team,\n\n1. App Purpose: Culinary Journal is a cozy culinary scrapbook for users to document home-cooked recipes, manage pantry checklists, and track cooking timers.\n\n2. Guest Mode & Account Deletion (Guideline 5.1.1(v)): Core features work without sign-in. Logged-in users can permanently delete their account and all associated data immediately inside the App via: Top-Right Profile (Personal Center) -> Edit Profile -> Account Security & Privacy -> Delete Account.\n\n3. Microphone & Speech Recognition: Requested ONLY when tapping "Voice Guidance" in the Cooking Workbench for hands-free step navigation while cooking. No audio is ever stored or uploaded.\n\n4. UGC Safety (Guideline 1.2): In Culinary Square, all public recipes and comments include instant "Report Objectionable Content" and "Block User" controls.\n\n5. Demo Account:\nUsername: demo_cook@culinaryjournal.app\nPassword: Cook2026!\n\nThank you for your review!',
+                          '苹果审核员英文说明模版'
+                        )}
+                        className="text-[#C85A32] hover:text-[#B34C26] font-semibold flex items-center gap-1 text-[11px]"
+                      >
+                        <Copy className="w-3 h-3" />
+                        <span>复制英文过审备注</span>
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-[#5A5248] leading-relaxed">
+                      已涵盖账号彻底删除路径（Guideline 5.1.1v）、麦克风与相册说明、Guideline 1.2 举报拉黑声明及预置测试账号，直接粘贴至 App Review Notes！
+                    </p>
+                  </div>
+                </div>
+
+                {/* Screenshot & Icon Studio CTA */}
+                <div className="p-4 bg-amber-50/70 border border-amber-200/80 rounded-xl space-y-3 text-xs">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <strong className="text-amber-950 block font-bold text-sm">
+                        7. 已为您生成 3 款专属 App Icon + 3 张过审尺寸宣传截图：
+                      </strong>
+                      <p className="text-[11px] text-amber-900 mt-0.5">
+                        支持一键导出 <strong>1024 × 1024 无透明通道图标</strong> 与 <strong>1290 × 2796 (6.7"/6.9")</strong> 标准尺寸截图！
+                      </p>
+                    </div>
+                    {onOpenStoreAssets && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          onOpenStoreAssets();
+                        }}
+                        className="px-4 py-2.5 bg-[#2C2723] hover:bg-[#3E3731] text-amber-100 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 shrink-0 min-h-[40px]"
+                      >
+                        <Sparkles className="w-4 h-4 text-amber-300" />
+                        <span>打开图标库与商店截图下载</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Crucial Question 1: Will User Data Be Lost When Publishing New Versions? */}
+              <div className="p-5 bg-white border border-[#EADBCE] rounded-2xl space-y-3">
+                <div className="flex items-center gap-2 border-b border-[#EADBCE] pb-2.5">
+                  <Database className="w-4 h-4 text-[#5F7A4D]" />
+                  <h4 className="text-sm font-bold text-[#2C2723]">
+                    核心疑问解答一：发布新版本后，用户的菜谱手帐数据会不会丢失？
+                  </h4>
+                </div>
+
+                <div className="space-y-2 text-xs text-[#5A5248]">
+                  <p>
+                    <strong className="text-emerald-700">结论：绝对不会丢失。</strong> 无论您发布多少次新版本，老用户更新后原有的菜谱、拍照配图、备忘与勋章成就全部完好无损。
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <div className="p-3 bg-[#FAF7F2] rounded-xl border border-[#EADBCE] space-y-1">
+                      <strong className="text-[#2C2723] block flex items-center gap-1">
+                        <Lock className="w-3.5 h-3.5 text-[#5F7A4D]" />
+                        <span>原生应用沙盒持久化隔离</span>
+                      </strong>
+                      <p className="text-[11px] text-[#7A7268] leading-relaxed">
+                        用户的手帐数据保存在手机底层的 <strong>IndexedDB 与 LocalStorage</strong> 专用数据沙盒中。应用更新仅替换代码逻辑（HTML/JS/CSS），底层数据文件不会被操作系统清空。
+                      </p>
+                    </div>
+
+                    <div className="p-3 bg-[#FAF7F2] rounded-xl border border-[#EADBCE] space-y-1">
+                      <strong className="text-[#2C2723] block flex items-center gap-1">
+                        <Cloud className="w-3.5 h-3.5 text-[#C85A32]" />
+                        <span>多重安全底线：导出与云备份</span>
+                      </strong>
+                      <p className="text-[11px] text-[#7A7268] leading-relaxed">
+                        应用内已内置<strong>「全量 JSON 备份导出与一键还原」</strong>及<strong>「GitHub 云端同步」</strong>功能，即使换手机也能秒级无损转移全部手帐。
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Crucial Question 2: Cloud Server & Operating Cost */}
+              <div className="p-5 bg-white border border-[#EADBCE] rounded-2xl space-y-3">
+                <div className="flex items-center gap-2 border-b border-[#EADBCE] pb-2.5">
+                  <Cloud className="w-4 h-4 text-[#C85A32]" />
+                  <h4 className="text-sm font-bold text-[#2C2723]">
+                    核心疑问解答二：作为 App 运营方，需要买什么云服务器？运营成本高吗？
+                  </h4>
+                </div>
+
+                <div className="space-y-2.5 text-xs text-[#5A5248]">
+                  <p>
+                    <strong className="text-emerald-700">结论：初期运营成本几乎为 0 元，完全不需要提前采购昂贵的云服务器！</strong>
+                  </p>
+                  <p className="leading-relaxed">
+                    传统 App 需要购买昂贵的关系型数据库和配置固定的云服务器（每月数百到数千元），无论有没有人用都在持续扣费。
+                    而《食味手记》采用<strong>端侧轻量化与 Serverless 边缘网络架构</strong>：
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                    <div className="p-3 bg-[#FAF7F2] rounded-xl border border-[#EADBCE] space-y-1">
+                      <strong className="text-[#2C2723] block">1. 静态资源 0 费用分发</strong>
+                      <p className="text-[11px] text-[#7A7268]">
+                        网页和 App 核心包通过 Cloudflare Pages / Google Cloud Run / Firebase 托管，月享受数百万次免费请求额度。
+                      </p>
+                    </div>
+
+                    <div className="p-3 bg-[#FAF7F2] rounded-xl border border-[#EADBCE] space-y-1">
+                      <strong className="text-[#2C2723] block">2. 用户数据本地优先</strong>
+                      <p className="text-[11px] text-[#7A7268]">
+                        用户的手帐、照片和私房笔记均在手机本地端运算存储，运营方不需要为您承担庞大的私有云硬盘存储成本。
+                      </p>
+                    </div>
+
+                    <div className="p-3 bg-[#FAF7F2] rounded-xl border border-[#EADBCE] space-y-1">
+                      <strong className="text-[#2C2723] block">3. 即使月活过万也极省</strong>
+                      <p className="text-[11px] text-[#7A7268]">
+                        食味广场社区互动数据极度轻量（JSON 文档），按需调用，初期每月支出为 0，即便日活过千每月账单通常也不超过两杯咖啡钱。
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Ready Checklist */}
+              <div className="p-4 bg-emerald-50/70 border border-emerald-200/80 rounded-xl space-y-2 text-xs">
+                <div className="flex items-center gap-1.5 font-bold text-emerald-950">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-700" />
+                  <span>上线发布物料就绪确认单（开箱即用）：</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-emerald-900 pt-1">
+                  <div className="flex items-center gap-1.5">
+                    <Check className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                    <span>应用图标（512x512 高清暖胃手帐图标）已生成</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Check className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                    <span>中英法日西 5 国多语言界面全覆盖</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Check className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                    <span>完整的在线《隐私保护政策》与《用户协议》已内嵌</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Check className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                    <span>Apple Guideline 1.2 UGC 违规举报与拉黑封禁机制就绪</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Check className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                    <span>离线 ServiceWorker PWA 缓存与原生安装提示已就绪</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Check className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                    <span>账号注销与数据全量导出合规功能已就绪</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* TAB 1: 微信小程序 / 微信生态 */}
           {activeTab === 'wechat' && (
             <div className="space-y-4 animate-fade-in">

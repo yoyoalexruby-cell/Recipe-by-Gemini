@@ -15,8 +15,10 @@ import { useI18n } from '../i18n/context';
 import { 
   Trophy, Award, Star, Flame, Sparkles, Plus, 
   Camera, Check, MessageSquare, ArrowRight, Heart, 
-  Share2, BookOpen, Clock, Users, X, Send, ChevronRight
+  Share2, BookOpen, Clock, Users, X, Send, ChevronRight, Flag
 } from 'lucide-react';
+import { UGCReportModal } from './UGCReportModal';
+import { getBlockedUserIds } from '../utils/ugcModeration';
 
 interface MasterChefContestViewProps {
   currentUser: UserProfile | null;
@@ -61,12 +63,29 @@ export const MasterChefContestView: React.FC<MasterChefContestViewProps> = ({
     };
   }, []);
 
-  // Filtered submissions for currently selected dish
+  // Filtered submissions for currently selected dish (Excluding blocked authors per Apple Guideline 1.2)
+  const [reportModalData, setReportModalData] = useState<{
+    targetId: string;
+    targetTitle: string;
+    authorId: string;
+    authorName: string;
+  } | null>(null);
+  const [blockedUsersRevision, setBlockedUsersRevision] = useState(0);
+
+  // Listen to block updates
+  useEffect(() => {
+    const handleMod = () => setBlockedUsersRevision((p) => p + 1);
+    window.addEventListener('ugc-moderation-updated', handleMod);
+    return () => window.removeEventListener('ugc-moderation-updated', handleMod);
+  }, []);
+
   const currentDishSubmissions = useMemo(() => {
+    const blocked = getBlockedUserIds();
     return submissions
       .filter((s) => s.dishId === activeTheme.id)
+      .filter((s) => !blocked.includes(s.authorId) && !blocked.includes(s.authorName))
       .sort((a, b) => b.totalScore - a.totalScore); // Highest rated first
-  }, [submissions, activeTheme.id]);
+  }, [submissions, activeTheme.id, blockedUsersRevision]);
 
   // Modals state
   const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
@@ -241,7 +260,7 @@ export const MasterChefContestView: React.FC<MasterChefContestViewProps> = ({
               <span>{language === 'zh-CN' ? '参与打擂 · 提交我的参赛手帐' : 'Submit My Contest Entry'}</span>
             </button>
             <span className="text-[11px] text-center text-[#7A7268]">
-              {language === 'zh-CN' ? `本期赛题：${activeTheme.dishName}` : `Current Theme: ${activeTheme.dishName}`}
+              {language === 'zh-CN' ? `本期赛题：${activeTheme.dishName}` : `Current Theme: ${activeTheme.dishEnglishName || activeTheme.dishName}`}
             </span>
           </div>
         </div>
@@ -430,7 +449,25 @@ export const MasterChefContestView: React.FC<MasterChefContestViewProps> = ({
                           className="w-6 h-6 rounded-full object-cover border border-[#EADBCE]" 
                         />
                         <span className="text-xs font-semibold text-[#2C2723]">{sub.authorName}</span>
-                        <span className="text-[10px] text-[#9A9085] ml-auto font-mono">{sub.createdAt}</span>
+                        <div className="flex items-center gap-1.5 ml-auto">
+                          <span className="text-[10px] text-[#9A9085] font-mono">{sub.createdAt}</span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setReportModalData({
+                                targetId: sub.id,
+                                targetTitle: sub.title,
+                                authorId: sub.authorId,
+                                authorName: sub.authorName
+                              });
+                            }}
+                            className="p-1 text-[#9A9085] hover:text-rose-600 rounded-md transition-colors"
+                            title={language === 'zh-CN' ? '举报违规或屏蔽作者' : 'Report or Block'}
+                          >
+                            <Flag className="w-3 h-3" />
+                          </button>
+                        </div>
                       </div>
 
                       {/* Entry Title */}
@@ -942,12 +979,21 @@ export const MasterChefContestView: React.FC<MasterChefContestViewProps> = ({
         </div>
       )}
 
-      {/* Realtime Toast notification */}
-      {actionToast && (
-        <div className="fixed bottom-6 right-6 z-50 bg-[#2C2723] text-amber-100 text-xs py-3 px-4 rounded-xl border border-[#EADBCE] shadow-2xl flex items-center gap-2 animate-fade-in max-w-md">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-          <span>{actionToast}</span>
-        </div>
+      {/* UGC Content Safety Report & Block Modal */}
+      {reportModalData && (
+        <UGCReportModal
+          isOpen={Boolean(reportModalData)}
+          onClose={() => setReportModalData(null)}
+          targetId={reportModalData.targetId}
+          targetType="contest_submission"
+          targetTitle={reportModalData.targetTitle}
+          authorId={reportModalData.authorId}
+          authorName={reportModalData.authorName}
+          onSuccess={() => {
+            setActionToast(language === 'zh-CN' ? '举报已受理，已从您的榜单中屏蔽该作者' : 'Report submitted and author blocked');
+            setTimeout(() => setActionToast(null), 3500);
+          }}
+        />
       )}
 
     </div>

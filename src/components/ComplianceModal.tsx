@@ -13,6 +13,7 @@ interface ComplianceModalProps {
   onDeleteAccount?: () => void;
   onExportAllData?: () => void;
   initialTab?: 'privacy' | 'terms' | 'permissions' | 'cancellation' | 'filings';
+  onOpenLegalPage?: (section: 'privacy' | 'support' | 'terms' | 'delete-account') => void;
 }
 
 export const ComplianceModal: React.FC<ComplianceModalProps> = ({
@@ -22,28 +23,29 @@ export const ComplianceModal: React.FC<ComplianceModalProps> = ({
   onDeleteAccount,
   onExportAllData,
   initialTab = 'privacy',
+  onOpenLegalPage,
 }) => {
   const [activeTab, setActiveTab] = useState<'privacy' | 'terms' | 'permissions' | 'cancellation' | 'filings'>(initialTab);
-  const [confirmDeleteText, setConfirmDeleteText] = useState('');
+  const [confirmChecked, setConfirmChecked] = useState(false);
   const [deleteSuccess, setDeleteSuccess] = useState(false);
+
+  React.useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
 
   if (!isOpen) return null;
 
   const handleExecuteDelete = () => {
-    if (confirmDeleteText !== '确认彻底注销') {
-      alert('请输入「确认彻底注销」以核实操作');
-      return;
+    if (!confirmChecked) return;
+    if (onDeleteAccount) {
+      onDeleteAccount();
     }
-    if (window.confirm('警告：此操作不可逆！注销后，您创建的所有私房菜谱、烹饪心得与打卡记录将被永久彻底清除。确定继续吗？')) {
-      if (onDeleteAccount) {
-        onDeleteAccount();
-      }
-      setDeleteSuccess(true);
-      setTimeout(() => {
-        setDeleteSuccess(false);
-        onClose();
-      }, 2500);
-    }
+    setDeleteSuccess(true);
+    setConfirmChecked(false);
+    setTimeout(() => {
+      setDeleteSuccess(false);
+      onClose();
+    }, 2000);
   };
 
   return (
@@ -139,7 +141,7 @@ export const ComplianceModal: React.FC<ComplianceModalProps> = ({
             }`}
           >
             <Building className="w-3.5 h-3.5" />
-            <span>工信部备案资质</span>
+            <span>全球合规与技术支持</span>
           </button>
         </div>
 
@@ -310,78 +312,89 @@ export const ComplianceModal: React.FC<ComplianceModalProps> = ({
                   </p>
                 </div>
 
-                <div className="pt-2 border-t border-rose-200 flex flex-col sm:flex-row sm:items-center gap-3">
-                  <input
-                    type="text"
-                    placeholder="输入「确认彻底注销」"
-                    value={confirmDeleteText}
-                    onChange={(e) => setConfirmDeleteText(e.target.value)}
-                    className="flex-1 px-3 py-2 text-xs bg-white border border-rose-300 rounded-lg focus:outline-hidden focus:border-rose-600 text-rose-900"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleExecuteDelete}
-                    disabled={confirmDeleteText !== '确认彻底注销'}
-                    className="px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:pointer-events-none text-white text-xs font-bold rounded-lg transition-colors shrink-0 shadow-xs"
-                  >
-                    注销账号并永久抹除
-                  </button>
+                <div className="pt-2 border-t border-rose-200 space-y-3">
+                  <label className="flex items-start gap-2.5 text-xs text-rose-900 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={confirmChecked}
+                      onChange={(e) => setConfirmChecked(e.target.checked)}
+                      className="mt-0.5 w-4 h-4 accent-rose-600 rounded shrink-0"
+                    />
+                    <span>
+                      我已知晓注销操作不可撤销，确认永久注销当前账号并彻底抹除所有个人手帐与认证数据 / I understand this action is irreversible and permanently deletes my account and data.
+                    </span>
+                  </label>
+                  <div>
+                    <button
+                      type="button"
+                      onClick={handleExecuteDelete}
+                      disabled={!confirmChecked}
+                      className="px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:pointer-events-none text-white text-xs font-bold rounded-lg transition-colors shrink-0 shadow-xs min-h-[40px]"
+                    >
+                      注销账号并永久抹除 / Delete Account Permanently
+                    </button>
+                  </div>
                 </div>
 
                 {deleteSuccess && (
                   <div className="p-2 bg-rose-100 text-rose-800 text-xs font-medium rounded text-center">
-                    账号及本地数据已彻底销毁并登出。
+                    账号及本地数据已彻底销毁并登出。 / Account and local data permanently deleted.
                   </div>
                 )}
               </div>
             </div>
           )}
 
-          {/* TAB 5: 工信部备案与资质信息 (ICP / APP Filings) */}
+          {/* TAB 5: 全球上架合规与公开网址 (Global Store Compliance & Support) */}
           {activeTab === 'filings' && (
             <div className="space-y-4 animate-fade-in font-sans">
               <div className="p-4 bg-[#FAF7F2] border border-[#EADBCE] rounded-xl space-y-3">
                 <div className="flex items-center gap-2 text-sm font-bold text-[#2C2723]">
                   <Award className="w-5 h-5 text-[#C85A32]" />
-                  <span>国家工信部与网安备案核验信息公示</span>
+                  <span>App Store 全球合规与官方支持公开页面</span>
                 </div>
                 <p className="text-xs text-[#7A7268] leading-relaxed">
-                  依据《中华人民共和国反电信网络诈骗法》、《互联网信息服务管理办法》及《移动互联网应用程序信息服务管理规定》，食味手记已依法完成全流程备案与资质审核。
+                  《食味手记 (Culinary Journal)》遵循 Apple App Store Review Guidelines（含 Guideline 1.2 UGC 社区安全与 Guideline 5.1.1(v) 账号随时删除规范）、GDPR 及本地优先隐私保护原则。
                 </p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pt-2">
                   <div className="p-3 bg-white border border-[#EADBCE] rounded-lg">
-                    <span className="text-[11px] text-[#7A7268] block">APP 主办者 / 开发者主体</span>
-                    <strong className="text-[#2C2723] block mt-0.5">食味手记开发工作室 · 数字化美食实验室</strong>
+                    <span className="text-[11px] text-[#7A7268] block">应用名称 / Bundle ID</span>
+                    <strong className="text-[#2C2723] font-mono block mt-0.5">Culinary Journal (com.culinary.journal)</strong>
                   </div>
 
                   <div className="p-3 bg-white border border-[#EADBCE] rounded-lg">
-                    <span className="text-[11px] text-[#7A7268] block">移动应用程序 (APP) 备案号</span>
-                    <strong className="text-[#C85A32] font-mono block mt-0.5">粤ICP备20260388号-1A</strong>
-                  </div>
-
-                  <div className="p-3 bg-white border border-[#EADBCE] rounded-lg">
-                    <span className="text-[11px] text-[#7A7268] block">全国公安机关互联网站安全管理服务备案</span>
-                    <strong className="text-[#2C2723] font-mono block mt-0.5">粤公网安备 44030502008888号</strong>
-                  </div>
-
-                  <div className="p-3 bg-white border border-[#EADBCE] rounded-lg">
-                    <span className="text-[11px] text-[#7A7268] block">合规监督与用户申诉渠道</span>
-                    <strong className="text-[#2C2723] font-mono block mt-0.5">compliance@culinaryjournal.app</strong>
+                    <span className="text-[11px] text-[#7A7268] block">开发者联系与隐私申诉邮箱</span>
+                    <strong className="text-[#C85A32] font-mono block mt-0.5">yoyoalexruby@gmail.com</strong>
                   </div>
                 </div>
 
-                <div className="pt-2 text-right">
-                  <a
-                    href="https://beian.miit.gov.cn"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs text-[#C85A32] hover:underline font-medium"
-                  >
-                    <span>工信部域名信息备案管理系统 (官方核验)</span>
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                </div>
+                {onOpenLegalPage && (
+                  <div className="pt-2 flex items-center gap-3 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onOpenLegalPage('privacy');
+                      }}
+                      className="px-3.5 py-2 bg-white border border-[#EADBCE] hover:border-[#C85A32] rounded-xl text-xs font-semibold text-[#2C2723] inline-flex items-center gap-1.5"
+                    >
+                      <span>打开独立《隐私政策》公开网页</span>
+                      <ExternalLink className="w-3.5 h-3.5 text-[#C85A32]" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onOpenLegalPage('support');
+                      }}
+                      className="px-3.5 py-2 bg-white border border-[#EADBCE] hover:border-[#C85A32] rounded-xl text-xs font-semibold text-[#2C2723] inline-flex items-center gap-1.5"
+                    >
+                      <span>打开独立《技术支持中心》公开网页</span>
+                      <ExternalLink className="w-3.5 h-3.5 text-[#C85A32]" />
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}

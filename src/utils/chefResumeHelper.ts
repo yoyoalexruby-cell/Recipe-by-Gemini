@@ -3,18 +3,9 @@ import { Recipe } from '../types/recipe';
 import { UserLevelInfo } from '../types/membership';
 import { getCookingRecords } from './cookingLogStorage';
 import { getContestSubmissions } from './contestStorage';
+import { ChefMedal, getChefAchievements } from './achievementService';
 
-export interface ChefMedal {
-  id: string;
-  name: string;
-  nameEn: string;
-  icon: string;
-  description: string;
-  descriptionEn: string;
-  isUnlocked: boolean;
-  unlockedAt?: string;
-  rarity: 'common' | 'rare' | 'epic' | 'legendary';
-}
+export type { ChefMedal };
 
 export interface ChefResumeData {
   user: UserProfile;
@@ -72,89 +63,9 @@ export function buildChefResumeData(
     else if (r.createdAt) dates.add(r.createdAt.slice(0, 10));
   });
 
-  // Medals Calculation
-  const medals: ChefMedal[] = [
-    {
-      id: 'medal_apprentice',
-      name: '灶台启蒙',
-      nameEn: 'Kitchen Pioneer',
-      icon: '🌱',
-      description: '记录第一道私房菜谱手帐',
-      descriptionEn: 'Recorded 1st recipe scrapbook',
-      isUnlocked: recipes.length >= 1,
-      rarity: 'common'
-    },
-    {
-      id: 'medal_five_star',
-      name: '百味匠人',
-      nameEn: 'Master of Flavors',
-      icon: '✨',
-      description: '累计记录 5 篇以上私房菜谱',
-      descriptionEn: 'Logged 5+ recipe scrapbooks',
-      isUnlocked: recipes.length >= 5,
-      rarity: 'rare'
-    },
-    {
-      id: 'medal_fire',
-      name: '人间烟火',
-      nameEn: 'Warm Hearth',
-      icon: '🔥',
-      description: '累计烹饪打卡 3 次以上',
-      descriptionEn: 'Logged cooking in calendar 3+ times',
-      isUnlocked: dates.size >= 3,
-      rarity: 'common'
-    },
-    {
-      id: 'medal_contest',
-      name: '擂台勇者',
-      nameEn: 'Contest Challenger',
-      icon: '🏆',
-      description: '参与厨神大赛并提交打擂手帐',
-      descriptionEn: 'Entered Master Chef Contest',
-      isUnlocked: userContestSubmissions.length >= 1,
-      rarity: 'rare'
-    },
-    {
-      id: 'medal_judge',
-      name: '舌尖评审',
-      nameEn: 'Sensory Judge',
-      icon: '⭐',
-      description: '作为大众评审为厨友打分品鉴',
-      descriptionEn: 'Rated community contest dishes',
-      isUnlocked: userContestVotes >= 1,
-      rarity: 'common'
-    },
-    {
-      id: 'medal_share',
-      name: '慷慨分享',
-      nameEn: 'Open Table',
-      icon: '📖',
-      description: '公开发布 1 篇以上菜谱至食味广场',
-      descriptionEn: 'Shared 1+ recipe publicly',
-      isUnlocked: publicRecipes.length >= 1,
-      rarity: 'common'
-    },
-    {
-      id: 'medal_popular',
-      name: '食客追捧',
-      nameEn: 'Beloved Cook',
-      icon: '💖',
-      description: '累计收获 10 个以上厨友暖心点赞',
-      descriptionEn: 'Earned 10+ community likes',
-      isUnlocked: totalLikesReceived >= 10,
-      rarity: 'epic'
-    },
-    {
-      id: 'medal_grandmaster',
-      name: '殿堂食神',
-      nameEn: 'Culinary Legend',
-      icon: '👑',
-      description: '达到最高等级 LV5 殿堂厨神',
-      descriptionEn: 'Reached Grandmaster Level 5',
-      isUnlocked: levelInfo.level >= 5,
-      rarity: 'legendary'
-    }
-  ];
+  // Unified Medals Calculation
+  const achievements = getChefAchievements(user, recipes, levelInfo, totalLikesReceived);
+  const medals: ChefMedal[] = achievements.medals;
 
   // Pick up to 3 best representative recipes (Masterpieces)
   // Priority: 1) Has cover image, 2) Public / Contest, 3) High rating / likes, 4) Most steps/notes

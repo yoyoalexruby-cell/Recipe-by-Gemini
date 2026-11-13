@@ -9,6 +9,7 @@ import { VoiceTranscriptionButton } from './VoiceTranscriptionButton';
 import { estimateRecipeCalories } from '../utils/nutritionCalculator';
 import { UserProfile } from '../types/auth';
 import { getCurrentUser } from '../utils/authService';
+import { useI18n } from '../i18n/context';
 
 interface RecipeEditorProps {
   initialRecipe?: Recipe | null;
@@ -25,6 +26,7 @@ export const RecipeEditor: React.FC<RecipeEditorProps> = ({
   currentUser: propUser,
   onStartTimer
 }) => {
+  const { t, language, getCategoryLabel, getSubcategoryLabel } = useI18n();
   const isEditing = Boolean(initialRecipe);
   const currentUser = propUser || getCurrentUser();
 
@@ -300,7 +302,9 @@ export const RecipeEditor: React.FC<RecipeEditorProps> = ({
           <div className="flex items-center gap-2">
             <ChefHat className="w-5 h-5 text-[#C85A32]" />
             <h2 className="text-base sm:text-lg font-bold font-journal-title text-[#2C2723]">
-              {isEditing ? '编辑烹饪手帐' : '记一笔新的私房菜谱'}
+              {isEditing 
+                ? (language === 'zh-CN' ? '编辑烹饪手帐' : 'Edit Recipe Journal') 
+                : (language === 'zh-CN' ? '记一笔新的私房菜谱' : 'New Recipe Journal')}
             </h2>
           </div>
           <button
@@ -320,7 +324,7 @@ export const RecipeEditor: React.FC<RecipeEditorProps> = ({
               activeTab === 'basic' ? 'border-[#C85A32] text-[#C85A32] font-semibold' : 'border-transparent text-[#7A7268] hover:text-[#2C2723]'
             }`}
           >
-            1. 基本信息与配图
+            1. {language === 'zh-CN' ? '基本信息与配图' : 'Overview & Photos'}
           </button>
           <button
             type="button"
@@ -329,7 +333,7 @@ export const RecipeEditor: React.FC<RecipeEditorProps> = ({
               activeTab === 'ingredients' ? 'border-[#C85A32] text-[#C85A32] font-semibold' : 'border-transparent text-[#7A7268] hover:text-[#2C2723]'
             }`}
           >
-            2. 食材清单 ({ingredients.length})
+            2. {language === 'zh-CN' ? '食材清单' : 'Ingredients'} ({ingredients.length})
           </button>
           <button
             type="button"
@@ -338,7 +342,7 @@ export const RecipeEditor: React.FC<RecipeEditorProps> = ({
               activeTab === 'steps' ? 'border-[#C85A32] text-[#C85A32] font-semibold' : 'border-transparent text-[#7A7268] hover:text-[#2C2723]'
             }`}
           >
-            3. 烹饪步骤 ({steps.length})
+            3. {language === 'zh-CN' ? '烹饪步骤' : 'Cooking Steps'} ({steps.length})
           </button>
           <button
             type="button"
@@ -347,7 +351,7 @@ export const RecipeEditor: React.FC<RecipeEditorProps> = ({
               activeTab === 'review' ? 'border-[#C85A32] text-[#C85A32] font-semibold' : 'border-transparent text-[#7A7268] hover:text-[#2C2723]'
             }`}
           >
-            4. 心得与复盘
+            4. {language === 'zh-CN' ? '心得与复盘' : 'Review & Reflections'}
           </button>
         </div>
 
@@ -1677,14 +1681,14 @@ export const RecipeEditor: React.FC<RecipeEditorProps> = ({
                 onClick={onCancel}
                 className="px-4 py-2 text-xs text-[#7A7268] hover:text-[#2C2723] rounded-lg transition-colors"
               >
-                取消
+                {t('common.cancel', '取消')}
               </button>
               <button
                 type="submit"
                 className="px-5 py-2 text-xs font-semibold text-white bg-[#C85A32] hover:bg-[#B34C26] rounded-lg shadow-sm transition-all flex items-center gap-1.5"
               >
                 <Check className="w-4 h-4" />
-                <span>保存入手帐</span>
+                <span>{isEditing ? (language === 'zh-CN' ? '保存修改' : 'Save Changes') : (language === 'zh-CN' ? '保存入手帐' : 'Save to Journal')}</span>
               </button>
             </div>
           </div>

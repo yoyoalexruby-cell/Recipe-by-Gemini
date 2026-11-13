@@ -1,0 +1,17 @@
+{
+  "appId": "com.culinary.journal",
+  "appName": "食味手记",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "ios": {
+    "contentInset": "automatic",
+    "preferredContentMode": "mobile",
+    "scheme": "CulinaryJournal"
+  },
+  "android": {
+    "allowMixedContent": true
+  },
+  "server": {
+    "cleartext": true
+  }
+}

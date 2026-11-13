@@ -2,35 +2,129 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>食味手记 - 私房烹饪手帐</title>
-    <meta name="description" content="温暖手帐风美食菜谱记录器，涵盖详细食谱、动态食材清单、步骤拍照配图、心得复盘与精美手帐卡片分享。" />
-    <meta property="og:title" content="食味手记 - 私房烹饪手帐" />
-    <meta property="og:description" content="温暖手帐风美食菜谱记录器，涵盖详细食谱、动态食材清单、步骤拍照配图、心得复盘与精美手帐卡片分享。" />
-    <meta property="og:type" content="website" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="theme-color" content="#FAF7F2" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="食味手记" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
-    <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700;900&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=ZCOOL+XiaoWei&display=swap" rel="stylesheet">
     <script>
-      // 1. Pre-configure ethereum on window to avoid "Cannot redefine property: ethereum" from conflicting wallet extensions
-      try {
-        var _eth = undefined;
-        Object.defineProperty(window, 'ethereum', {
-          get: function() { return _eth; },
-          set: function(val) { _eth = val; },
-          configurable: true,
-          enumerable: true
-        });
-      } catch (e) {}
+      // 1. Guard Object.defineProperty / defineProperties / Reflect.defineProperty at 0ms (before external stylesheets)
+      // Prevents conflicting browser wallet extensions (e.g. Phantom evmAsk.js + MetaMask)
+      // from throwing "TypeError: Cannot redefine property: ethereum"
+      (function() {
+        var WALLET_GLOBALS = {
+          ethereum: true,
+          web3: true,
+          phantom: true,
+          solana: true,
+          okxwallet: true,
+          rabby: true,
+          coinbaseWalletExtension: true,
+          trustwallet: true
+        };
+
+        var origDefineProperty = Object.defineProperty;
+        var origDefineProperties = Object.defineProperties;
+        var origGetOwnPropertyDescriptor = Object.getOwnPropertyDescriptor;
+
+        function isWindowTarget(target) {
+          return target === window || target === globalThis;
+        }
+
+        Object.defineProperty = function(target, prop, descriptor) {
+          if (isWindowTarget(target) && prop && WALLET_GLOBALS[String(prop)]) {
+            try {
+              var existing = origGetOwnPropertyDescriptor.call(Object, target, prop);
+              if (existing && existing.configurable === false) {
+                if (existing.writable && descriptor && 'value' in descriptor) {
+                  try { target[prop] = descriptor.value; } catch (_err) {}
+                }
+                return target;
+              }
+              var safeDesc = {};
+              if (descriptor && typeof descriptor === 'object') {
+                var descKeys = Object.keys(descriptor);
+                for (var k = 0; k < descKeys.length; k++) {
+                  var key = descKeys[k];
+                  safeDesc[key] = descriptor[key];
+                }
+                if ('get' in descriptor && !('get' in safeDesc)) safeDesc.get = descriptor.get;
+                if ('set' in descriptor && !('set' in safeDesc)) safeDesc.set = descriptor.set;
+                if ('value' in descriptor && !('value' in safeDesc)) safeDesc.value = descriptor.value;
+                if ('writable' in descriptor && !('writable' in safeDesc)) safeDesc.writable = descriptor.writable;
+                if ('enumerable' in descriptor && !('enumerable' in safeDesc)) safeDesc.enumerable = descriptor.enumerable;
+              }
+              safeDesc.configurable = true;
+              return origDefineProperty.call(Object, target, prop, safeDesc);
+            } catch (_e) {
+              return target;
+            }
+          }
+          try {
+            return origDefineProperty.call(Object, target, prop, descriptor);
+          } catch (err) {
+            if (
+              isWindowTarget(target) &&
+              err instanceof TypeError &&
+              String(err.message || '').indexOf('Cannot redefine property') !== -1
+            ) {
+              return target;
+            }
+            throw err;
+          }
+        };
+
+        if (origDefineProperties) {
+          Object.defineProperties = function(target, props) {
+            if (isWindowTarget(target) && props && typeof props === 'object') {
+              try {
+                var keys = Object.keys(props);
+                var hasWalletKey = false;
+                for (var i = 0; i < keys.length; i++) {
+                  if (WALLET_GLOBALS[keys[i]]) {
+                    hasWalletKey = true;
+                    break;
+                  }
+                }
+                if (hasWalletKey) {
+                  for (var j = 0; j < keys.length; j++) {
+                    Object.defineProperty(target, keys[j], props[keys[j]]);
+                  }
+                  return target;
+                }
+              } catch (_e) {
+                return target;
+              }
+            }
+            try {
+              return origDefineProperties.call(Object, target, props);
+            } catch (err) {
+              if (
+                isWindowTarget(target) &&
+                err instanceof TypeError &&
+                String(err.message || '').indexOf('Cannot redefine property') !== -1
+              ) {
+                return target;
+              }
+              throw err;
+            }
+          };
+        }
+
+        if (typeof Reflect !== 'undefined' && Reflect.defineProperty) {
+          var origReflectDefineProperty = Reflect.defineProperty;
+          Reflect.defineProperty = function(target, prop, descriptor) {
+            if (isWindowTarget(target) && prop && WALLET_GLOBALS[String(prop)]) {
+              try {
+                Object.defineProperty(target, prop, descriptor);
+                return true;
+              } catch (_e) {
+                return true;
+              }
+            }
+            try {
+              return origReflectDefineProperty.call(Reflect, target, prop, descriptor);
+            } catch (_e) {
+              return false;
+            }
+          };
+        }
+      })();
 
       // 2. Safe WebSocket shim for Vite HMR in cloud preview environment (HMR is disabled in AI Studio iframe)
       if (typeof window !== 'undefined' && window.WebSocket) {
@@ -155,6 +249,24 @@
         }
       };
     </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>食味手记 - 私房烹饪手帐</title>
+    <meta name="description" content="温暖手帐风美食菜谱记录器，涵盖详细食谱、动态食材清单、步骤拍照配图、心得复盘与精美手帐卡片分享。" />
+    <meta property="og:title" content="食味手记 - 私房烹饪手帐" />
+    <meta property="og:description" content="温暖手帐风美食菜谱记录器，涵盖详细食谱、动态食材清单、步骤拍照配图、心得复盘与精美手帐卡片分享。" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="theme-color" content="#FAF7F2" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="食味手记" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700;900&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=ZCOOL+XiaoWei&display=swap" rel="stylesheet">
   </head>
   <body class="bg-[#FAF7F2] text-[#2C2723] antialiased selection:bg-[#E8DCC4] selection:text-[#50371E]">
     <div id="root"></div>

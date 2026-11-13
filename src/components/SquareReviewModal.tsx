@@ -1,10 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Recipe, RecipeComment } from '../types/recipe';
 import { UserProfile } from '../types/auth';
 import { 
   X, MessageSquare, Heart, Share2, GitFork, 
-  Send, Check, Sparkles, Star, Copy, ExternalLink 
+  Send, Check, Sparkles, Star, Copy, ExternalLink, Bookmark 
 } from 'lucide-react';
+import { 
+  isSquareRecipeBookmarked, 
+  toggleBookmarkSquareRecipe 
+} from '../utils/multiUserStorage';
+import { useI18n } from '../i18n/context';
 
 interface SquareReviewModalProps {
   isOpen: boolean;
@@ -29,11 +34,19 @@ export const SquareReviewModal: React.FC<SquareReviewModalProps> = ({
   onRequireLogin,
   onToggleLike
 }) => {
+  const { t, language } = useI18n();
   if (!isOpen || !recipe) return null;
 
   const [commentText, setCommentText] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
   const [clonedSuccess, setClonedSuccess] = useState(false);
+  const [bookmarkRevision, setBookmarkRevision] = useState(0);
+
+  useEffect(() => {
+    const handleBm = () => setBookmarkRevision((p) => p + 1);
+    window.addEventListener('square-bookmarks-updated', handleBm);
+    return () => window.removeEventListener('square-bookmarks-updated', handleBm);
+  }, []);
 
   const isLikedByMe = currentUser && recipe.likedBy?.includes(currentUser.uid);
 
@@ -80,10 +93,12 @@ export const SquareReviewModal: React.FC<SquareReviewModalProps> = ({
             </div>
             <div>
               <h3 className="text-base font-bold text-[#2C2723] font-serif truncate max-w-xs sm:max-w-md">
-                食客点评与分享 · 《{recipe.title}》
+                {language === 'zh-CN' ? `食客点评与分享 · 《${recipe.title}》` : `Reviews & Sharing · "${recipe.title}"`}
               </h3>
               <p className="text-xs text-[#7A7268]">
-                作者：@{recipe.authorName || '热心厨友'} · 共 {recipe.comments?.length || 0} 条厨友评价
+                {language === 'zh-CN' 
+                  ? `作者：@${recipe.authorName || '热心厨友'} · 共 ${recipe.comments?.length || 0} 条厨友评价`
+                  : `Chef: @${recipe.authorName || 'Friendly Chef'} · ${recipe.comments?.length || 0} community reviews`}
               </p>
             </div>
           </div>
@@ -107,7 +122,28 @@ export const SquareReviewModal: React.FC<SquareReviewModalProps> = ({
               }`}
             >
               <Heart className={`w-3.5 h-3.5 ${isLikedByMe ? 'fill-current' : ''}`} />
-              <span>{recipe.likesCount || 0} 赞</span>
+              <span>{recipe.likesCount || 0} {language === 'zh-CN' ? '赞' : 'Likes'}</span>
+            </button>
+
+            {/* Bookmark button */}
+            <button
+              type="button"
+              onClick={() => {
+                toggleBookmarkSquareRecipe(recipe.id, currentUser);
+                setBookmarkRevision((p) => p + 1);
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all flex items-center gap-1.5 ${
+                isSquareRecipeBookmarked(recipe.id, currentUser)
+                  ? 'bg-amber-50 border-amber-300 text-amber-900 shadow-2xs'
+                  : 'bg-white border-[#EADBCE] text-[#7A7268] hover:text-amber-800'
+              }`}
+            >
+              <Bookmark className={`w-3.5 h-3.5 ${isSquareRecipeBookmarked(recipe.id, currentUser) ? 'fill-current' : ''}`} />
+              <span>
+                {isSquareRecipeBookmarked(recipe.id, currentUser)
+                  ? (language === 'zh-CN' ? '已收藏' : 'Saved')
+                  : (language === 'zh-CN' ? '收藏' : 'Save')}
+              </span>
             </button>
 
             <button
@@ -118,12 +154,12 @@ export const SquareReviewModal: React.FC<SquareReviewModalProps> = ({
               {clonedSuccess ? (
                 <>
                   <Check className="w-3.5 h-3.5" />
-                  <span>已克隆到我的手帐！</span>
+                  <span>{language === 'zh-CN' ? '已克隆到我的手帐！' : 'Saved to Journal!'}</span>
                 </>
               ) : (
                 <>
                   <GitFork className="w-3.5 h-3.5" />
-                  <span>收进我的手帐</span>
+                  <span>{language === 'zh-CN' ? '收进我的手帐' : 'Save to Journal'}</span>
                 </>
               )}
             </button>
@@ -133,19 +169,19 @@ export const SquareReviewModal: React.FC<SquareReviewModalProps> = ({
             <button
               onClick={() => onShareRecipe(recipe)}
               className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white border border-[#EADBCE] text-[#5A5248] hover:text-[#C85A32] transition-colors flex items-center gap-1"
-              title="生成精美长图手帐分享卡"
+              title={language === 'zh-CN' ? "生成精美长图手帐分享卡" : "Generate printable scrapbook share card"}
             >
               <Share2 className="w-3.5 h-3.5" />
-              <span>制作长图卡</span>
+              <span>{language === 'zh-CN' ? '制作长图卡' : 'Share Card'}</span>
             </button>
 
             <button
               onClick={handleCopyLink}
               className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white border border-[#EADBCE] text-[#5A5248] hover:text-[#C85A32] transition-colors flex items-center gap-1"
-              title="复制专属深度链接"
+              title={language === 'zh-CN' ? "复制专属深度链接" : "Copy recipe link"}
             >
               <Copy className="w-3.5 h-3.5" />
-              <span>{copiedLink ? '已复制链接！' : '复制链接'}</span>
+              <span>{copiedLink ? (language === 'zh-CN' ? '已复制链接！' : 'Copied Link!') : (language === 'zh-CN' ? '复制链接' : 'Copy Link')}</span>
             </button>
           </div>
         </div>
@@ -155,7 +191,7 @@ export const SquareReviewModal: React.FC<SquareReviewModalProps> = ({
           {(!recipe.comments || recipe.comments.length === 0) ? (
             <div className="py-12 text-center text-xs text-[#7A7268] space-y-2">
               <MessageSquare className="w-8 h-8 mx-auto text-[#C85A32]/30" />
-              <p>这篇菜谱暂无点评，做过这道菜的朋友快来抢沙发写下你的品尝心得吧！</p>
+              <p>{language === 'zh-CN' ? '这篇菜谱暂无点评，做过这道菜的朋友快来抢沙发写下你的品尝心得吧！' : 'No reviews yet. If you have cooked this dish, be the first to share your tasting notes!'}</p>
             </div>
           ) : (
             recipe.comments.map((comment) => (
@@ -196,7 +232,11 @@ export const SquareReviewModal: React.FC<SquareReviewModalProps> = ({
             <div className="flex-1">
               <textarea
                 rows={2}
-                placeholder={currentUser ? "写下你的品尝反馈、火候改进建议或复刻心得..." : "请先登录后发表点评..."}
+                placeholder={
+                  currentUser 
+                    ? (language === 'zh-CN' ? "写下你的品尝反馈、火候改进建议或复刻心得..." : "Write your feedback, heat timing notes or cooking tips...") 
+                    : (language === 'zh-CN' ? "请先登录后发表点评..." : "Please sign in to leave a review...")
+                }
                 value={commentText}
                 onChange={(e) => setCommentText(e.target.value)}
                 disabled={!currentUser}
@@ -210,7 +250,7 @@ export const SquareReviewModal: React.FC<SquareReviewModalProps> = ({
                 className="px-4 py-2 bg-[#C85A32] hover:bg-[#B34C26] disabled:opacity-50 text-white rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 shadow-sm shrink-0 h-10"
               >
                 <Send className="w-3.5 h-3.5" />
-                <span>发表点评</span>
+                <span>{language === 'zh-CN' ? '发表点评' : 'Post Review'}</span>
               </button>
             ) : (
               <button
@@ -218,7 +258,7 @@ export const SquareReviewModal: React.FC<SquareReviewModalProps> = ({
                 onClick={onRequireLogin}
                 className="px-4 py-2 bg-[#C85A32] text-white rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 shadow-sm shrink-0 h-10"
               >
-                <span>登录后点评</span>
+                <span>{language === 'zh-CN' ? '登录后点评' : 'Sign In to Review'}</span>
               </button>
             )}
           </div>

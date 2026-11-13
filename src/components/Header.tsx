@@ -95,7 +95,7 @@ export const Header: React.FC<HeaderProps> = ({
             }`}
           >
             <Trophy className="w-4 h-4 text-amber-500 fill-amber-400" />
-            <span>{t('nav.contest', '厨神大赛')}</span>
+            <span>{t('nav.contest')}</span>
             <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping absolute -top-0.5 -right-1" />
           </button>
 
@@ -160,10 +160,10 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               onClick={onOpenShare}
               className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-[#07C160] hover:text-white bg-white hover:bg-[#07C160] border border-[#07C160]/40 rounded-md transition-all shadow-2xs whitespace-nowrap shrink-0"
-              title="分享App给好友（微信/朋友圈/二维码）"
+              title={t('nav.shareAppTitle', '分享App给好友（微信/朋友圈/二维码）')}
             >
               <Share2 className="w-3.5 h-3.5" />
-              <span>分享App</span>
+              <span>{t('nav.shareApp', '分享App')}</span>
             </button>
           )}
 
@@ -241,7 +241,7 @@ export const Header: React.FC<HeaderProps> = ({
           className={`flex flex-col items-center gap-1 relative ${activeView === 'contest' ? 'text-[#C85A32] font-semibold' : ''}`}
         >
           <Trophy className="w-4 h-4 text-amber-500 fill-amber-400" />
-          <span>{t('nav.contest', '厨神大赛')}</span>
+          <span>{t('nav.contest')}</span>
           <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping absolute -top-0.5 right-1" />
         </button>
         <button

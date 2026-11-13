@@ -1,4 +1,6 @@
 import { UserProfile, LoginMethod } from '../types/auth';
+import { AVATAR_SVG_MAP } from './avatarGraphics';
+import { OFFICIAL_EDITORIAL_USER } from '../data/officialSquareSeed';
 
 const CURRENT_USER_KEY = 'food_journal_auth_user_v1';
 const REGISTERED_USERS_KEY = 'food_journal_registered_users_v1';
@@ -8,7 +10,7 @@ export const DEMO_COMMUNITY_USERS: UserProfile[] = [
   {
     uid: 'user-lin',
     displayName: '阿林私房菜',
-    avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+    avatarUrl: AVATAR_SVG_MAP.chef_boy_cap,
     loginMethod: 'google',
     bio: '专注江浙传统慢炖浓油赤酱，用镜头记录烟火气。',
     createdAt: '2026-10-10'
@@ -16,7 +18,7 @@ export const DEMO_COMMUNITY_USERS: UserProfile[] = [
   {
     uid: 'user-momo',
     displayName: 'Momo烘焙日记',
-    avatarUrl: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=150&q=80',
+    avatarUrl: AVATAR_SVG_MAP.chef_girl_apron,
     loginMethod: 'wechat',
     bio: '日式洋果子与治愈系甜品爱好者，每周出炉两次。',
     createdAt: '2026-10-12'
@@ -24,7 +26,7 @@ export const DEMO_COMMUNITY_USERS: UserProfile[] = [
   {
     uid: 'user-chef-chen',
     displayName: '陈主厨的深夜轻餐',
-    avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
+    avatarUrl: AVATAR_SVG_MAP.chef_mustache_gourmet,
     loginMethod: 'phone',
     bio: '15分钟快手西餐与意式面点，一个人也要好好吃饭。',
     createdAt: '2026-10-15'
@@ -56,13 +58,56 @@ export function saveCurrentUser(user: UserProfile | null): void {
   }
 }
 
-// Get all locally registered accounts
+/**
+ * Switch into the Official Editorial Chef Account (Operator Console)
+ */
+export function loginAsOfficialEditorial(passcode: string): UserProfile {
+  const clean = passcode.trim();
+  if (clean !== 'Official2026!' && clean !== '8888') {
+    throw new Error('官方运营口令不正确（默认口令：Official2026! 或 8888） / Invalid operator passcode');
+  }
+  saveCurrentUser(OFFICIAL_EDITORIAL_USER);
+  return OFFICIAL_EDITORIAL_USER;
+}
+
+// Get all locally registered accounts (pre-seeded with official App Review demo account & Official Editorial Chef)
 function getRegisteredUsers(): Record<string, { user: UserProfile; passwordHash: string }> {
+  const defaultDemoKey = 'demo_cook@culinaryjournal.app';
+  const defaultDemoEntry = {
+    user: {
+      uid: 'usr_apple_reviewer_demo',
+      displayName: 'Chef Reviewer',
+      username: 'demo_cook@culinaryjournal.app',
+      email: 'demo_cook@culinaryjournal.app',
+      loginMethod: 'password' as LoginMethod,
+      avatarUrl: AVATAR_SVG_MAP.chef_boy_cap,
+      bio: 'Home cooking enthusiast exploring cozy culinary recipes.',
+      createdAt: '2026-10-01'
+    },
+    passwordHash: btoa('Cook2026!')
+  };
+
+  const officialKey = 'official@culinaryjournal.app';
+  const officialEntry = {
+    user: OFFICIAL_EDITORIAL_USER,
+    passwordHash: btoa('Official2026!')
+  };
+
   try {
     const raw = localStorage.getItem(REGISTERED_USERS_KEY);
-    return raw ? JSON.parse(raw) : {};
+    const parsed = raw ? JSON.parse(raw) : {};
+    if (!parsed[defaultDemoKey]) {
+      parsed[defaultDemoKey] = defaultDemoEntry;
+    }
+    if (!parsed[officialKey]) {
+      parsed[officialKey] = officialEntry;
+    }
+    return parsed;
   } catch {
-    return {};
+    return {
+      [defaultDemoKey]: defaultDemoEntry,
+      [officialKey]: officialEntry
+    };
   }
 }
 
@@ -74,6 +119,20 @@ function saveRegisteredUsers(users: Record<string, { user: UserProfile; password
   }
 }
 
+function pickLocalAvatarForSeed(seed: string): string {
+  const avatarPool = [
+    AVATAR_SVG_MAP.chef_boy_cap,
+    AVATAR_SVG_MAP.chef_girl_apron,
+    AVATAR_SVG_MAP.chef_mustache_gourmet
+  ].filter(Boolean);
+  if (avatarPool.length === 0) return '';
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+  return avatarPool[hash % avatarPool.length];
+}
+
 /**
  * Register with Username & Password
  */
@@ -82,24 +141,25 @@ export function registerWithPassword(username: string, password: string, email?:
   const key = username.toLowerCase().trim();
   
   if (users[key]) {
-    throw new Error('该用户名已被注册，请尝试直接登录或更换用户名');
+    throw new Error('该账号已被注册，请直接登录或更换用户名 / Account already exists');
   }
 
   const uid = 'usr_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const cleanName = username.includes('@') ? username.split('@')[0] : username.trim();
   const newUser: UserProfile = {
     uid,
-    displayName: username.trim(),
+    displayName: cleanName || '美食手帐家',
     username: username.trim(),
-    email: email?.trim(),
+    email: email?.trim() || (username.includes('@') ? username.trim() : undefined),
     loginMethod: 'password',
-    avatarUrl: `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(username)}`,
+    avatarUrl: pickLocalAvatarForSeed(username),
     bio: '手帐新人，正在用锅碗瓢盆记录生活。',
     createdAt: new Date().toISOString().slice(0, 10)
   };
 
   users[key] = {
     user: newUser,
-    passwordHash: btoa(password) // basic mock obfuscation
+    passwordHash: btoa(encodeURIComponent(password))
   };
   saveRegisteredUsers(users);
   saveCurrentUser(newUser);
@@ -114,17 +174,25 @@ export function loginWithPassword(identifier: string, password: string): UserPro
   const key = identifier.toLowerCase().trim();
 
   // Search by username or email
-  let found = Object.values(users).find(
+  const found = Object.values(users).find(
     (item) => item.user.username?.toLowerCase() === key || item.user.email?.toLowerCase() === key
   );
 
   if (!found) {
-    // If not found in mock registered database, create seamless profile for convenience
-    return registerWithPassword(identifier, password);
+    throw new Error('未找到该账号，请先点击下方「免费注册新账号」 / Account not found, please sign up first');
   }
 
-  if (found.passwordHash !== btoa(password)) {
-    throw new Error('密码不正确，请重新输入');
+  const matchesEncoded = found.passwordHash === btoa(encodeURIComponent(password));
+  const matchesLegacy = (() => {
+    try {
+      return found.passwordHash === btoa(password);
+    } catch {
+      return false;
+    }
+  })();
+
+  if (!matchesEncoded && !matchesLegacy) {
+    throw new Error('密码不正确，请重新输入 / Incorrect password');
   }
 
   saveCurrentUser(found.user);
@@ -136,17 +204,16 @@ export function loginWithPassword(identifier: string, password: string): UserPro
  */
 export function loginWithPhone(phone: string, code: string): UserProfile {
   if (code !== '1234' && code.length !== 4 && code.length !== 6) {
-    throw new Error('验证码不正确，请输入收到的短信验证码 (演示可填 1234)');
+    throw new Error('验证码不正确');
   }
 
-  const masked = phone.slice(0, 3) + '****' + phone.slice(-4);
   const uid = 'phone_' + phone.trim();
   const user: UserProfile = {
     uid,
     displayName: `手机用户_${phone.slice(-4)}`,
     phone: phone.trim(),
     loginMethod: 'phone',
-    avatarUrl: `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(phone)}`,
+    avatarUrl: pickLocalAvatarForSeed(phone),
     bio: '用家常小菜，治愈一天疲惫。',
     createdAt: new Date().toISOString().slice(0, 10)
   };
@@ -164,7 +231,7 @@ export function loginWithGoogle(accountName = 'Google 用户'): UserProfile {
     uid,
     displayName: accountName,
     loginMethod: 'google',
-    avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
+    avatarUrl: AVATAR_SVG_MAP.chef_boy_cap,
     bio: '美食即是生活，用手帐定格每一道出锅时刻。',
     createdAt: new Date().toISOString().slice(0, 10)
   };
@@ -181,7 +248,7 @@ export function loginWithWeChat(): UserProfile {
     uid,
     displayName: '微信厨友_' + Math.floor(1000 + Math.random() * 9000),
     loginMethod: 'wechat',
-    avatarUrl: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=150&q=80',
+    avatarUrl: AVATAR_SVG_MAP.chef_girl_apron,
     bio: '微信手帐分享者，热爱尝试各地风味。',
     createdAt: new Date().toISOString().slice(0, 10)
   };
@@ -198,7 +265,7 @@ export function loginWithAlipay(): UserProfile {
     uid,
     displayName: '支付宝会员_' + Math.floor(1000 + Math.random() * 9000),
     loginMethod: 'alipay',
-    avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
+    avatarUrl: AVATAR_SVG_MAP.chef_mustache_gourmet,
     bio: '生活明朗，万物可爱，一日三餐认真对待。',
     createdAt: new Date().toISOString().slice(0, 10)
   };
@@ -213,10 +280,10 @@ export function loginAsGuest(): UserProfile {
   const uid = 'guest_' + Math.random().toString(36).slice(2, 8);
   const user: UserProfile = {
     uid,
-    displayName: '未命名大厨 (游客)',
+    displayName: '本机主厨 (免注册体验)',
     loginMethod: 'guest',
-    avatarUrl: `https://api.dicebear.com/7.x/adventurer/svg?seed=${uid}`,
-    bio: '游客体验中，随时可绑定账号同步到云端。',
+    avatarUrl: AVATAR_SVG_MAP.chef_boy_cap,
+    bio: '本机离线手帐体验中，随时可注册账号独立保存。',
     createdAt: new Date().toISOString().slice(0, 10)
   };
   saveCurrentUser(user);
@@ -231,7 +298,49 @@ export function updateCurrentUserProfile(updates: Partial<UserProfile>): UserPro
   if (!current) throw new Error('未登录');
   const updated = { ...current, ...updates };
   saveCurrentUser(updated);
+
+  // Sync changes back to registered users dictionary if applicable
+  const users = getRegisteredUsers();
+  let modified = false;
+  for (const k of Object.keys(users)) {
+    if (users[k].user.uid === current.uid) {
+      users[k] = { ...users[k], user: updated };
+      modified = true;
+    }
+  }
+  if (modified) {
+    saveRegisteredUsers(users);
+  }
   return updated;
+}
+
+/**
+ * Permanently delete user account & credentials (Apple Guideline 5.1.1(v) compliant)
+ */
+export function deleteCurrentUserAccount(targetUser?: UserProfile | null): void {
+  const active = targetUser || getCurrentUser();
+  if (active) {
+    try {
+      const raw = localStorage.getItem(REGISTERED_USERS_KEY);
+      if (raw) {
+        const parsed: Record<string, { user: UserProfile; passwordHash: string }> = JSON.parse(raw);
+        const nextUsers: Record<string, { user: UserProfile; passwordHash: string }> = {};
+        for (const [k, val] of Object.entries(parsed)) {
+          const sameUid = val.user.uid === active.uid;
+          const sameUsername = active.username && k === active.username.toLowerCase().trim();
+          const sameEmail = active.email && val.user.email?.toLowerCase() === active.email.toLowerCase();
+          if (!sameUid && !sameUsername && !sameEmail) {
+            nextUsers[k] = val;
+          }
+        }
+        localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(nextUsers));
+      }
+      localStorage.removeItem(`culinary_recipes_${active.uid}`);
+    } catch (err) {
+      console.error('Failed to remove registered account record', err);
+    }
+  }
+  saveCurrentUser(null);
 }
 
 /**

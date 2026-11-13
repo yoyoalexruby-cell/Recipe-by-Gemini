@@ -1,17 +1,20 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Recipe } from './types/recipe';
 import { UserProfile } from './types/auth';
-import { getCurrentUser } from './utils/authService';
+import { getCurrentUser, deleteCurrentUserAccount } from './utils/authService';
 import { 
   getUserRecipes, 
   getPublicSquareRecipes, 
   saveUserRecipe, 
   deleteUserRecipe, 
   cloneRecipeToMyJournal, 
+  cloneMenuToMyJournal,
   toggleLikeRecipe, 
   addCommentToRecipe, 
-  getRecipeById 
+  getRecipeById,
+  purgeAllUserOwnedData
 } from './utils/multiUserStorage';
+import { auditUGCContentSafety } from './utils/ugcModeration';
 import { getGitHubConfig, syncRecipesToGitHub, GitHubConfig } from './utils/githubSync';
 import { Header } from './components/Header';
 import { RecipeCard } from './components/RecipeCard';
@@ -36,6 +39,9 @@ import { ComplianceModal } from './components/ComplianceModal';
 import { MultiPlatformGuideModal } from './components/MultiPlatformGuideModal';
 import { AppShareModal } from './components/AppShareModal';
 import { FooterCompliance } from './components/FooterCompliance';
+import { PublicLegalSupportPage, PublicPageSection } from './components/PublicLegalSupportPage';
+import { AppStoreAssetsModal } from './components/AppStoreAssetsModal';
+import { OfficialOpsModal } from './components/OfficialOpsModal';
 import { FuzzySearchBar } from './components/FuzzySearchBar';
 import { fuzzyFilterRecipes } from './utils/fuzzySearch';
 import { getMergedTaxonomy } from './utils/taxonomyStorage';
@@ -74,11 +80,32 @@ export default function App() {
   const [categoryManagerParent, setCategoryManagerParent] = useState<string>('烘焙甜点');
   const [taxonomyRevision, setTaxonomyRevision] = useState(0);
 
-  // Compliance & Multi-Platform Guide Modals
+  // Compliance, Public Legal Pages & App Store Assets Studio
   const [isComplianceModalOpen, setIsComplianceModalOpen] = useState(false);
   const [complianceTab, setComplianceTab] = useState<'privacy' | 'terms' | 'permissions' | 'cancellation' | 'filings'>('privacy');
   const [isMultiPlatformModalOpen, setIsMultiPlatformModalOpen] = useState(false);
   const [isAppShareModalOpen, setIsAppShareModalOpen] = useState(false);
+  const [isStoreAssetsModalOpen, setIsStoreAssetsModalOpen] = useState(false);
+  const [isOfficialOpsModalOpen, setIsOfficialOpsModalOpen] = useState(false);
+  const [publicLegalPage, setPublicLegalPage] = useState<PublicPageSection | null>(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const page = urlParams.get('page') || urlParams.get('view');
+      const tab = urlParams.get('tab');
+      if (page === 'privacy') return 'privacy';
+      if (page === 'support') return 'support';
+      if (page === 'terms') return 'terms';
+      if (page === 'delete-account') return 'delete-account';
+      if (page === 'compliance') {
+        if (tab === 'terms') return 'terms';
+        if (tab === 'cancellation') return 'delete-account';
+        return 'privacy';
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  });
 
   // GitHub Auto-Sync Config
   const [githubConfig, setGithubConfig] = useState<GitHubConfig>(() => getGitHubConfig());
@@ -94,20 +121,55 @@ export default function App() {
   const [selectedSubCategory, setSelectedSubCategory] = useState<string>('all');
   const [favoritesOnly, setFavoritesOnly] = useState(false);
 
-  // Deep linking check on mount
+  // Deep linking & public URL routing check on mount and browser back/forward
   useEffect(() => {
-    try {
-      const urlParams = new URLSearchParams(window.location.search);
-      const recipeId = urlParams.get('recipeId') || urlParams.get('recipe');
-      if (recipeId) {
-        const found = getRecipeById(recipeId);
-        if (found) {
-          setSharedRecipeTarget(found);
+    const syncFromUrl = () => {
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const page = urlParams.get('page') || urlParams.get('view');
+        const tab = urlParams.get('tab');
+
+        if (page === 'store-assets') {
+          setIsStoreAssetsModalOpen(true);
         }
+
+        if (page === 'privacy') {
+          setPublicLegalPage('privacy');
+          return;
+        }
+        if (page === 'support') {
+          setPublicLegalPage('support');
+          return;
+        }
+        if (page === 'terms') {
+          setPublicLegalPage('terms');
+          return;
+        }
+        if (page === 'delete-account') {
+          setPublicLegalPage('delete-account');
+          return;
+        }
+        if (page === 'compliance') {
+          setPublicLegalPage(tab === 'terms' ? 'terms' : tab === 'cancellation' ? 'delete-account' : 'privacy');
+          return;
+        }
+        setPublicLegalPage(null);
+
+        const recipeId = urlParams.get('recipeId') || urlParams.get('recipe');
+        if (recipeId) {
+          const found = getRecipeById(recipeId);
+          if (found) {
+            setSharedRecipeTarget(found);
+          }
+        }
+      } catch (e) {
+        console.warn('URL parsing error', e);
       }
-    } catch (e) {
-      console.warn('URL parsing error', e);
-    }
+    };
+
+    syncFromUrl();
+    window.addEventListener('popstate', syncFromUrl);
+    return () => window.removeEventListener('popstate', syncFromUrl);
   }, []);
 
   // Listen to master recipe updates & auth changes across windows / tabs
@@ -146,9 +208,30 @@ export default function App() {
     isFirstRender.current = false;
   }, [recipes, githubConfig]);
 
-  // Handle Save Recipe (isolated to current user)
+  // Handle Save Recipe (with Apple Guideline 1.2 pre-publish UGC content safety & food hazard filter)
   const handleSaveRecipe = (recipe: Recipe) => {
-    const saved = saveUserRecipe(recipe, currentUser);
+    let recipeToSave = recipe;
+    let blockedReason: string | null = null;
+
+    if (recipe.isPublic) {
+      const textFields = [
+        recipe.title,
+        recipe.subtitle || '',
+        recipe.cuisine || '',
+        ...(recipe.tags || []),
+        ...recipe.ingredients.map((i) => `${i.name} ${i.note || ''}`),
+        ...recipe.steps.map((s) => `${s.title} ${s.description} ${s.tip || ''}`),
+        recipe.review?.tastingNotes || '',
+        recipe.review?.pitfallsAndLessons || ''
+      ];
+      const audit = auditUGCContentSafety(textFields);
+      if (!audit.passed) {
+        recipeToSave = { ...recipe, isPublic: false };
+        blockedReason = (language === 'zh-CN' ? audit.reasonZh : audit.reasonEn) || '未通过内容安全检测';
+      }
+    }
+
+    const saved = saveUserRecipe(recipeToSave, currentUser);
     setRecipes(getUserRecipes(currentUser));
     setPublicRecipes(getPublicSquareRecipes());
     setIsEditorOpen(false);
@@ -156,8 +239,14 @@ export default function App() {
     if (selectedRecipe && selectedRecipe.id === recipe.id) {
       setSelectedRecipe(saved);
     }
-    setSyncToast(`菜谱《${saved.title}》已保存${saved.isPublic ? '并公开至食味广场' : '至私密手帐'}`);
-    setTimeout(() => setSyncToast(null), 3000);
+
+    if (blockedReason) {
+      setSyncToast(`${blockedReason}（已自动转为仅自己可见的私密手帐）`);
+      setTimeout(() => setSyncToast(null), 5000);
+    } else {
+      setSyncToast(`菜谱《${saved.title}》已保存${saved.isPublic ? '并公开至食味广场' : '至私密手帐'}`);
+      setTimeout(() => setSyncToast(null), 3000);
+    }
   };
 
   // Handle Delete Recipe
@@ -199,6 +288,22 @@ export default function App() {
     setTimeout(() => setSyncToast(null), 3500);
   };
 
+  // Handle Batch Clone Official Curated Menu to Current User's Journal
+  const handleCloneMenu = (menuRecipes: Recipe[], menuTitle: string) => {
+    if (!currentUser) {
+      setIsAuthModalOpen(true);
+      return;
+    }
+    const addedCount = cloneMenuToMyJournal(menuRecipes, currentUser);
+    setRecipes(getUserRecipes(currentUser));
+    if (addedCount > 0) {
+      setSyncToast(`已将《${menuTitle}》共 ${addedCount} 道食谱整套收入您的私人手帐本！`);
+    } else {
+      setSyncToast(`《${menuTitle}》中的菜谱已在您的手帐本中，无需重复收录。`);
+    }
+    setTimeout(() => setSyncToast(null), 3800);
+  };
+
   // Handle Like on Public or Private Recipe
   const handleToggleLike = (recipeId: string) => {
     toggleLikeRecipe(recipeId, currentUser);
@@ -214,10 +319,16 @@ export default function App() {
     }
   };
 
-  // Handle Add Comment
+  // Handle Add Comment (with pre-publish UGC content safety filter)
   const handleAddComment = (recipeId: string, content: string) => {
     if (!currentUser) {
       setIsAuthModalOpen(true);
+      return;
+    }
+    const audit = auditUGCContentSafety([content]);
+    if (!audit.passed) {
+      setSyncToast((language === 'zh-CN' ? audit.reasonZh : audit.reasonEn) || '评论包含敏感违禁词，已被拦截');
+      setTimeout(() => setSyncToast(null), 4500);
       return;
     }
     addCommentToRecipe(recipeId, currentUser.displayName, currentUser.avatarUrl, content);
@@ -318,19 +429,59 @@ export default function App() {
     }
   };
 
+  const handleOpenLegalPage = (section: PublicPageSection) => {
+    setPublicLegalPage(section);
+    try {
+      window.history.pushState({}, '', `${window.location.pathname}?page=${section}`);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch {
+      // ignore history errors in restricted contexts
+    }
+  };
+
+  const handleCloseLegalPage = () => {
+    setPublicLegalPage(null);
+    try {
+      window.history.pushState({}, '', window.location.pathname);
+    } catch {
+      // ignore
+    }
+  };
+
   const handleDeleteAccount = () => {
     try {
       if (currentUser) {
-        const userKey = `culinary_recipes_${currentUser.uid}`;
-        localStorage.removeItem(userKey);
-        localStorage.removeItem('culinary_current_user');
+        purgeAllUserOwnedData(currentUser.uid);
+        deleteCurrentUserAccount(currentUser);
+      } else {
+        deleteCurrentUserAccount(null);
       }
       setCurrentUser(null);
       setRecipes(getUserRecipes(null));
+      setPublicRecipes(getPublicSquareRecipes());
+      setSelectedRecipe(null);
+      setSyncToast(
+        language === 'zh-CN'
+          ? '您的账号及名下全部个人数据已永久注销清除'
+          : 'Your account and all personal data have been permanently deleted'
+      );
+      setTimeout(() => setSyncToast(null), 4000);
     } catch (e) {
       console.error('Account deletion error', e);
     }
   };
+
+  if (publicLegalPage) {
+    return (
+      <PublicLegalSupportPage
+        initialSection={publicLegalPage}
+        currentUser={currentUser}
+        onBackToApp={handleCloseLegalPage}
+        onExportAllData={handleExportAllData}
+        onDeleteAccount={handleDeleteAccount}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#FAF7F2] text-[#2C2723] flex flex-col font-sans">
@@ -395,6 +546,10 @@ export default function App() {
               setSelectedRecipe(updated);
             }}
             onStartTimer={handleStartTimer}
+            onStartCooking={(rec) => {
+              setSelectedRecipe(null);
+              setActiveView('pantry');
+            }}
           />
         ) : (
           <>
@@ -413,26 +568,26 @@ export default function App() {
                   <div className="max-w-2xl">
                     <div className="flex items-center gap-2 mb-1.5">
                       <span className="text-xs font-serif tracking-widest text-[#C85A32] uppercase block">
-                        私房手作 · 烟火记录
+                        {t('journal.heroTag', '私房手作 · 烟火记录')}
                       </span>
                       {currentUser ? (
                         <span className="text-[11px] text-[#5A5248] bg-[#FAF7F2] border border-[#EADBCE] px-2 py-0.5 rounded-full">
-                          专属大厨：{currentUser.displayName}
+                          {t('journal.chef', '专属大厨：')}{currentUser.displayName}
                         </span>
                       ) : (
                         <button
                           onClick={() => setIsAuthModalOpen(true)}
                           className="text-[11px] text-[#C85A32] hover:underline"
                         >
-                          (点击登录以享受多端独立手帐)
+                          {t('journal.loginPrompt', '(点击登录以享受多端独立手帐)')}
                         </button>
                       )}
                     </div>
                     <h1 className="text-2xl sm:text-4xl font-bold font-journal-title text-[#2C2723] leading-tight mb-3">
-                      今日下厨，把日子过得热气腾腾
+                      {t('journal.heroTitle', '今日下厨，把日子过得热气腾腾')}
                     </h1>
                     <p className="text-xs sm:text-sm text-[#7A7268] leading-relaxed font-serif">
-                      详细记录食材用量、关键火候时序与心得复盘。每一张手帐页，都是留给餐桌的温柔回忆。
+                      {t('journal.heroDesc', '详细记录食材用量、关键火候时序与心得复盘。每一张手帐页，都是留给餐桌的温柔回忆。')}
                     </p>
                   </div>
 
@@ -445,7 +600,7 @@ export default function App() {
                         onChange={setSearchQuery}
                         recipes={recipes}
                         onSelectRecipe={(rec) => setSelectedRecipe(rec)}
-                        placeholder="模糊与近义词搜索菜名、食材 (如：肉、虾、抹茶、生抽)..."
+                        placeholder={t('journal.searchPlaceholder', '模糊与近义词搜索菜名、食材 (如：肉、虾、抹茶、生抽)...')}
                       />
                     </div>
 
@@ -509,10 +664,10 @@ export default function App() {
                         setIsCategoryManagerOpen(true);
                       }}
                       className="px-2.5 py-1.5 rounded-lg whitespace-nowrap font-medium text-[#C85A32] bg-[#FAF3EC] hover:bg-[#C85A32] hover:text-white border border-dashed border-[#C85A32]/50 transition-colors flex items-center gap-1 shrink-0 ml-1"
-                      title="自定义添加一级大类或二级细分名录"
+                      title={language === 'zh-CN' ? "自定义添加一级大类或二级细分名录" : "Add custom category or subcategory"}
                     >
                       <Plus className="w-3.5 h-3.5" />
-                      <span>自定义名录</span>
+                      <span>{language === 'zh-CN' ? '自定义名录' : 'Custom Categories'}</span>
                     </button>
                   </div>
 
@@ -521,7 +676,7 @@ export default function App() {
                     <div className="mt-3 pt-3 border-t border-[#F0E6DC] flex items-center gap-1.5 overflow-x-auto text-xs no-scrollbar">
                       <span className="text-[11px] font-semibold text-[#7A7268] shrink-0 flex items-center gap-1">
                         <Tag className="w-3.5 h-3.5 text-[#C85A32]" />
-                        <span>{selectedCategory}细分：</span>
+                        <span>{getCategoryLabel(selectedCategory)} {language === 'zh-CN' ? '细分：' : 'Subcategories:'}</span>
                       </span>
                       <button
                         onClick={() => setSelectedSubCategory('all')}
@@ -531,7 +686,7 @@ export default function App() {
                             : 'bg-[#FAF7F2] text-[#7A7268] hover:text-[#2C2723] border border-[#EADBCE]'
                         }`}
                       >
-                        全部细分
+                        {t('category.allSub', '全部细分')}
                       </button>
                       {(activeTaxonomy[selectedCategory]?.subcategories || []).map((sub) => {
                         const count = recipes.filter(
@@ -549,7 +704,7 @@ export default function App() {
                             }`}
                           >
                             <span>{sub.icon}</span>
-                            <span>{sub.label}</span>
+                            <span>{getSubcategoryLabel(sub.id)}</span>
                             {count > 0 && (
                               <span className={`text-[10px] ml-0.5 px-1 py-0.2 rounded-full ${
                                 selectedSubCategory === sub.id ? 'bg-white/25 text-white' : 'bg-stone-200/70 text-[#7A7268]'
@@ -568,17 +723,17 @@ export default function App() {
                           setIsCategoryManagerOpen(true);
                         }}
                         className="px-2 py-1 rounded-md whitespace-nowrap text-[11px] font-medium text-[#C85A32] hover:bg-[#FAF3EC] border border-dashed border-[#C85A32]/40 transition-colors flex items-center gap-1 shrink-0 ml-1"
-                        title="为当前分类添加细分名录"
+                        title={language === 'zh-CN' ? "为当前分类添加细分名录" : "Add subcategory for current category"}
                       >
                         <Plus className="w-3 h-3" />
-                        <span>添加细分</span>
+                        <span>{language === 'zh-CN' ? '添加细分' : 'Add Subcategory'}</span>
                       </button>
                     </div>
                   ) : (
                     <div className="mt-3 pt-3 border-t border-[#F0E6DC] flex items-center gap-1.5 overflow-x-auto text-xs no-scrollbar">
                       <span className="text-[11px] font-semibold text-[#7A7268] shrink-0 flex items-center gap-1">
                         <Sparkles className="w-3.5 h-3.5 text-[#C85A32]" />
-                        <span>甜点细分直达：</span>
+                        <span>{t('square.dessertQuickAccess', '甜点细分直达：')}</span>
                       </span>
                       {(activeTaxonomy['烘焙甜点']?.subcategories || []).map((sub) => (
                         <button
@@ -590,7 +745,7 @@ export default function App() {
                           className="px-2.5 py-1 rounded-md whitespace-nowrap font-medium bg-[#FAF7F2] hover:bg-white text-[#7A7268] hover:text-[#C85A32] border border-[#EADBCE] transition-colors flex items-center gap-1 shrink-0"
                         >
                           <span>{sub.icon}</span>
-                          <span>{sub.label}</span>
+                          <span>{getSubcategoryLabel(sub.id)}</span>
                         </button>
                       ))}
 
@@ -601,10 +756,10 @@ export default function App() {
                           setIsCategoryManagerOpen(true);
                         }}
                         className="px-2 py-1 rounded-md whitespace-nowrap text-[11px] font-medium text-[#C85A32] hover:bg-[#FAF3EC] border border-dashed border-[#C85A32]/40 transition-colors flex items-center gap-1 shrink-0 ml-1"
-                        title="为烘焙甜点添加细分名录"
+                        title={language === 'zh-CN' ? "为烘焙甜点添加细分名录" : "Add subcategory for Baking & Desserts"}
                       >
                         <Plus className="w-3 h-3" />
-                        <span>添加细分</span>
+                        <span>{language === 'zh-CN' ? '添加细分' : 'Add Subcategory'}</span>
                       </button>
                     </div>
                   )}
@@ -614,9 +769,13 @@ export default function App() {
                 {/* Recipe Cards Grid */}
                 <div className="flex items-center justify-between mb-4 px-1">
                   <div className="text-xs text-[#7A7268]">
-                    我的手帐收录 <span className="font-mono font-semibold text-[#2C2723]">{filteredRecipes.length}</span> 道私房菜谱
-                    {selectedCategory !== 'all' && ` · ${selectedCategory}`}
-                    {selectedSubCategory !== 'all' && ` · ${selectedSubCategory}`}
+                    {language === 'zh-CN' ? (
+                      <>我的手帐收录 <span className="font-mono font-semibold text-[#2C2723]">{filteredRecipes.length}</span> 道私房菜谱</>
+                    ) : (
+                      <><span className="font-mono font-semibold text-[#2C2723]">{filteredRecipes.length}</span> recipes in your personal journal</>
+                    )}
+                    {selectedCategory !== 'all' && ` · ${getCategoryLabel(selectedCategory)}`}
+                    {selectedSubCategory !== 'all' && ` · ${getSubcategoryLabel(selectedSubCategory)}`}
                   </div>
                 </div>
 
@@ -624,10 +783,12 @@ export default function App() {
                   <div className="bg-white border border-dashed border-[#EADBCE] rounded-2xl p-12 text-center max-w-md mx-auto">
                     <BookOpen className="w-10 h-10 text-[#C85A32]/40 mx-auto mb-3" />
                     <h3 className="text-base font-bold text-[#2C2723] font-journal-title mb-1">
-                      手帐本空空如也，来记一笔吧！
+                      {language === 'zh-CN' ? '手帐本空空如也，来记一笔吧！' : 'Your journal is empty, start creating!'}
                     </h3>
                     <p className="text-xs text-[#7A7268] mb-4">
-                      您可以点击下方按钮录入第一道私房菜，或者前往食味广场将厨友分享的好菜一键收录。
+                      {language === 'zh-CN' 
+                        ? '您可以点击下方按钮录入第一道私房菜，或者前往食味广场将厨友分享的好菜一键收录。' 
+                        : 'Create your first signature recipe or browse the Culinary Square to save community dishes.'}
                     </p>
                     <div className="flex items-center justify-center gap-3">
                       <button
@@ -638,14 +799,14 @@ export default function App() {
                         className="px-4 py-2 bg-[#C85A32] text-white text-xs font-semibold rounded-lg hover:bg-[#B34C26] transition-colors inline-flex items-center gap-1.5"
                       >
                         <Plus className="w-4 h-4" />
-                        <span>新建私房食谱</span>
+                        <span>{language === 'zh-CN' ? '新建私房食谱' : 'New Recipe'}</span>
                       </button>
                       <button
                         onClick={() => setActiveView('square')}
                         className="px-4 py-2 bg-white border border-[#EADBCE] text-[#2C2723] text-xs font-semibold rounded-lg hover:bg-[#FAF7F2] transition-colors inline-flex items-center gap-1.5"
                       >
                         <Sparkles className="w-4 h-4 text-[#C85A32]" />
-                        <span>浏览广场灵感</span>
+                        <span>{language === 'zh-CN' ? '浏览广场灵感' : 'Explore Community'}</span>
                       </button>
                     </div>
                   </div>
@@ -686,10 +847,12 @@ export default function App() {
                 currentUser={currentUser}
                 onOpenRecipe={(rec) => setSelectedRecipe(rec)}
                 onCloneRecipe={handleCloneRecipe}
+                onCloneMenu={handleCloneMenu}
                 onToggleLike={handleToggleLike}
                 onAddComment={handleAddComment}
                 onShareRecipe={(rec) => setSharingRecipe(rec)}
                 onRequireLogin={() => setIsAuthModalOpen(true)}
+                onOpenOfficialOps={() => setIsOfficialOpsModalOpen(true)}
               />
             )}
 
@@ -712,8 +875,15 @@ export default function App() {
             {activeView === 'pantry' && (
               <CookingExecutionView
                 recipes={recipes}
+                publicRecipes={publicRecipes}
                 currentUser={currentUser}
                 onOpenRecipe={(rec) => setSelectedRecipe(rec)}
+                onEditRecipe={(rec) => {
+                  setEditingRecipe(rec);
+                  setIsEditorOpen(true);
+                }}
+                onSaveRecipe={handleSaveRecipe}
+                onCloneRecipe={handleCloneRecipe}
                 onStartTimer={handleStartTimer}
               />
             )}
@@ -790,10 +960,11 @@ export default function App() {
         onConfigUpdated={(cfg) => setGithubConfig(cfg)}
       />
 
-      {/* Multi-Channel Auth Modal (Phone, Email/Password, WeChat, Alipay, Google) */}
+      {/* Compliant First-Party Auth Modal */}
       <AuthModal
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
+        onOpenLegalPage={(sec) => handleOpenLegalPage(sec)}
         onLoginSuccess={(user) => {
           setCurrentUser(user);
           setRecipes(getUserRecipes(user));
@@ -819,6 +990,9 @@ export default function App() {
             setRecipes(getUserRecipes(null));
             setPublicRecipes(getPublicSquareRecipes());
           }}
+          onDeleteAccount={handleDeleteAccount}
+          onExportAllData={handleExportAllData}
+          onOpenLegalPage={(sec) => handleOpenLegalPage(sec)}
           onNavigateToContest={() => {
             setActiveView('contest');
             setSelectedRecipe(null);
@@ -826,6 +1000,14 @@ export default function App() {
           onNavigateToNewRecipe={() => {
             setEditingRecipe(null);
             setIsEditorOpen(true);
+          }}
+          onNavigateToCalendar={() => {
+            setActiveView('calendar');
+            setSelectedRecipe(null);
+          }}
+          onNavigateToSquare={() => {
+            setActiveView('square');
+            setSelectedRecipe(null);
           }}
         />
       )}
@@ -844,9 +1026,11 @@ export default function App() {
         onOpenCompliance={handleOpenCompliance}
         onOpenMultiPlatform={() => setIsMultiPlatformModalOpen(true)}
         onOpenShare={() => setIsAppShareModalOpen(true)}
+        onOpenLegalPage={(sec) => handleOpenLegalPage(sec)}
+        onOpenStoreAssets={() => setIsStoreAssetsModalOpen(true)}
       />
 
-      {/* Compliance Center Modal (PIPL, Privacy, Terms, Data Takeout, MIIT Filings) */}
+      {/* Compliance Center Modal */}
       <ComplianceModal
         isOpen={isComplianceModalOpen}
         initialTab={complianceTab}
@@ -854,9 +1038,10 @@ export default function App() {
         currentUser={currentUser}
         onExportAllData={handleExportAllData}
         onDeleteAccount={handleDeleteAccount}
+        onOpenLegalPage={(sec) => handleOpenLegalPage(sec)}
       />
 
-      {/* Multi-Platform Guide Modal (iOS, Android, WeChat Mini Program, Web) */}
+      {/* Multi-Platform Guide Modal */}
       <MultiPlatformGuideModal
         isOpen={isMultiPlatformModalOpen}
         onClose={() => setIsMultiPlatformModalOpen(false)}
@@ -867,6 +1052,34 @@ export default function App() {
         onOpenShare={() => {
           setIsMultiPlatformModalOpen(false);
           setIsAppShareModalOpen(true);
+        }}
+        onOpenStoreAssets={() => setIsStoreAssetsModalOpen(true)}
+        onOpenLegalPage={(sec) => handleOpenLegalPage(sec)}
+      />
+
+      {/* App Store Icons & Official Screenshots Exporter Studio */}
+      <AppStoreAssetsModal
+        isOpen={isStoreAssetsModalOpen}
+        onClose={() => setIsStoreAssetsModalOpen(false)}
+      />
+
+      {/* Official Account Editorial Operations & UGC Moderation Console */}
+      <OfficialOpsModal
+        isOpen={isOfficialOpsModalOpen}
+        onClose={() => setIsOfficialOpsModalOpen(false)}
+        currentUser={currentUser}
+        publicRecipes={publicRecipes}
+        onSwitchToOfficialSuccess={(officialUser) => {
+          setCurrentUser(officialUser);
+          setRecipes(getUserRecipes(officialUser));
+          setPublicRecipes(getPublicSquareRecipes());
+        }}
+        onCreateOfficialRecipe={() => {
+          setEditingRecipe(null);
+          setIsEditorOpen(true);
+        }}
+        onMenusUpdated={() => {
+          setPublicRecipes(getPublicSquareRecipes());
         }}
       />
 

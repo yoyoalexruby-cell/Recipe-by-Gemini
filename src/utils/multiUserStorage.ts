@@ -1,13 +1,17 @@
 import { Recipe, RecipeComment } from '../types/recipe';
 import { UserProfile } from '../types/auth';
 import { INITIAL_RECIPES } from '../data/initialRecipes';
+import { OFFICIAL_SEED_RECIPES } from '../data/officialSquareSeed';
 import { DEMO_COMMUNITY_USERS } from './authService';
+import { getTakenDownItemIds } from './ugcModeration';
+
+import { AVATAR_SVG_MAP } from './avatarGraphics';
 
 const MASTER_RECIPES_KEY = 'food_journal_master_recipes_v2';
 
-// Seed initial recipes with author profiles and public status
+// Seed initial recipes with Official Editorial Chef dishes + community dishes across all 6 categories
 function createInitialSeededRecipes(): Recipe[] {
-  return INITIAL_RECIPES.map((recipe, index) => {
+  const communitySeeded: Recipe[] = INITIAL_RECIPES.map((recipe, index) => {
     const demoUser = DEMO_COMMUNITY_USERS[index % DEMO_COMMUNITY_USERS.length];
     return {
       ...recipe,
@@ -21,13 +25,14 @@ function createInitialSeededRecipes(): Recipe[] {
         {
           id: `c_${index}`,
           authorName: '手帐食客',
-          authorAvatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=150&q=80',
+          authorAvatar: AVATAR_SVG_MAP.chef_girl_apron,
           content: '步骤详尽，火候标注太清晰了！跟着手帐做一次成功！',
           createdAt: '2026-10-28'
         }
       ]
     };
   });
+  return [...OFFICIAL_SEED_RECIPES, ...communitySeeded];
 }
 
 // Fallback subcategory deduction if an existing local record is missing it
@@ -88,27 +93,36 @@ export function getAllMasterRecipes(): Recipe[] {
       let changed = false;
       const existingIds = new Set(parsed.map((r: Recipe) => r.id));
       const seededList = createInitialSeededRecipes();
+      const seededMap = new Map(seededList.map((s) => [s.id, s]));
       
       const updated = parsed.map((r: Recipe) => {
-        if (!r.subCategory) {
+        let next = r;
+        if (!next.subCategory) {
           changed = true;
-          return { ...r, subCategory: inferSubcategory(r) };
+          next = { ...next, subCategory: inferSubcategory(next) };
         }
-        return r;
+        const seedMatch = seededMap.get(next.id);
+        if (seedMatch && !next.coverImage && seedMatch.coverImage) {
+          changed = true;
+          next = { ...next, coverImage: seedMatch.coverImage };
+        }
+        return next;
       });
 
-      // Merge newly seeded recipes if missing
+      // Merge newly seeded Official & Community recipes if missing
+      const newlyAdded: Recipe[] = [];
       for (const seeded of seededList) {
         if (!existingIds.has(seeded.id)) {
-          updated.push(seeded);
+          newlyAdded.push(seeded);
           changed = true;
         }
       }
+      const mergedList = newlyAdded.length > 0 ? [...newlyAdded, ...updated] : updated;
 
       if (changed) {
-        localStorage.setItem(MASTER_RECIPES_KEY, JSON.stringify(updated));
+        localStorage.setItem(MASTER_RECIPES_KEY, JSON.stringify(mergedList));
       }
-      return updated;
+      return mergedList;
     }
     const seeded = createInitialSeededRecipes();
     localStorage.setItem(MASTER_RECIPES_KEY, JSON.stringify(seeded));
@@ -142,11 +156,12 @@ export function getUserRecipes(currentUser: UserProfile | null): Recipe[] {
 }
 
 /**
- * Returns all publicly shared recipes for the Culinary Square
+ * Returns all publicly shared recipes for the Culinary Square (excluding moderated/taken-down items)
  */
 export function getPublicSquareRecipes(): Recipe[] {
   const all = getAllMasterRecipes();
-  return all.filter((r) => r.isPublic === true);
+  const takedownIds = new Set(getTakenDownItemIds());
+  return all.filter((r) => r.isPublic === true && !takedownIds.has(r.id));
 }
 
 /**
@@ -237,6 +252,51 @@ export function cloneRecipeToMyJournal(sourceRecipe: Recipe, currentUser: UserPr
 }
 
 /**
+ * Batch clone an entire Official Curated Menu into the current user's journal (skipping already-cloned source recipes)
+ */
+export function cloneMenuToMyJournal(menuRecipes: Recipe[], currentUser: UserProfile): number {
+  if (menuRecipes.length === 0) return 0;
+  const all = getAllMasterRecipes();
+  const alreadyClonedSourceIds = new Set(
+    all
+      .filter((r) => r.ownerId === currentUser.uid && r.originalSource?.recipeId)
+      .map((r) => r.originalSource!.recipeId)
+  );
+
+  const today = new Date().toISOString().slice(0, 10);
+  const newClones: Recipe[] = [];
+
+  for (const sourceRecipe of menuRecipes) {
+    if (sourceRecipe.ownerId === currentUser.uid || alreadyClonedSourceIds.has(sourceRecipe.id)) {
+      continue;
+    }
+    const clonedId = 'recipe-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    newClones.push({
+      ...sourceRecipe,
+      id: clonedId,
+      ownerId: currentUser.uid,
+      authorName: currentUser.displayName,
+      authorAvatar: currentUser.avatarUrl,
+      isPublic: false,
+      likesCount: 0,
+      likedBy: [],
+      comments: [],
+      originalSource: {
+        recipeId: sourceRecipe.id,
+        authorName: sourceRecipe.authorName || '食味手记官方主厨'
+      },
+      createdAt: today,
+      updatedAt: today
+    });
+  }
+
+  if (newClones.length > 0) {
+    saveAllMasterRecipes([...newClones, ...all]);
+  }
+  return newClones.length;
+}
+
+/**
  * Toggle like / kudos on a recipe
  */
 export function toggleLikeRecipe(recipeId: string, currentUser: UserProfile | null): { likesCount: number; isLiked: boolean } {
@@ -324,3 +384,130 @@ export function migrateGuestRecipesToUser(user: UserProfile): number {
   }
   return migratedCount;
 }
+
+const SQUARE_BOOKMARKS_KEY_PREFIX = 'food_journal_square_bookmarks_v1_';
+
+function getBookmarkKey(currentUser: UserProfile | null): string {
+  const uid = currentUser?.uid || 'guest';
+  return `${SQUARE_BOOKMARKS_KEY_PREFIX}${uid}`;
+}
+
+/**
+ * Get all recipe IDs bookmarked/favorited from the Food Square
+ */
+export function getBookmarkedSquareRecipeIds(currentUser: UserProfile | null): string[] {
+  try {
+    const raw = localStorage.getItem(getBookmarkKey(currentUser));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Check if a specific recipe is bookmarked from the Food Square
+ */
+export function isSquareRecipeBookmarked(recipeId: string, currentUser: UserProfile | null): boolean {
+  const ids = getBookmarkedSquareRecipeIds(currentUser);
+  return ids.includes(recipeId);
+}
+
+/**
+ * Toggle bookmarking a recipe from the Food Square
+ */
+export function toggleBookmarkSquareRecipe(recipeId: string, currentUser: UserProfile | null): boolean {
+  const ids = getBookmarkedSquareRecipeIds(currentUser);
+  let updated: string[];
+  const wasBookmarked = ids.includes(recipeId);
+  if (wasBookmarked) {
+    updated = ids.filter((id) => id !== recipeId);
+  } else {
+    updated = [recipeId, ...ids];
+  }
+
+  try {
+    localStorage.setItem(getBookmarkKey(currentUser), JSON.stringify(updated));
+    window.dispatchEvent(new CustomEvent('square-bookmarks-updated', { detail: updated }));
+  } catch (err) {
+    console.error('Failed to save bookmark state', err);
+  }
+
+  return !wasBookmarked;
+}
+
+/**
+ * Returns all public recipes currently bookmarked by the user
+ */
+export function getBookmarkedSquareRecipes(currentUser: UserProfile | null): Recipe[] {
+  const bookmarkedIds = getBookmarkedSquareRecipeIds(currentUser);
+  if (bookmarkedIds.length === 0) return [];
+  const all = getAllMasterRecipes();
+  return all.filter((r) => bookmarkedIds.includes(r.id));
+}
+
+/**
+ * Returns all recipes collected from others in Food Square:
+ * 1. Recipes cloned/forked from others into user's handbooks (r.originalSource)
+ * 2. Recipes explicitly bookmarked from Food Square
+ * 3. Recipes liked by current user on the Food Square
+ */
+export function getSquareFavoritesAndClones(currentUser: UserProfile | null): Recipe[] {
+  const all = getAllMasterRecipes();
+  const bookmarkedIds = new Set(getBookmarkedSquareRecipeIds(currentUser));
+  const uid = currentUser?.uid || 'guest';
+
+  // Map to deduplicate by id
+  const resultMap = new Map<string, Recipe>();
+
+  all.forEach((recipe) => {
+    // 1. Cloned recipes in user's journal
+    const isUserClone = Boolean(
+      recipe.ownerId === uid && recipe.originalSource?.recipeId
+    );
+    // 2. Explicitly bookmarked
+    const isBookmarked = bookmarkedIds.has(recipe.id);
+    // 3. Liked by user and authored by someone else
+    const isLikedFromOther = Boolean(
+      currentUser && 
+      recipe.likedBy?.includes(currentUser.uid) && 
+      recipe.ownerId !== currentUser.uid
+    );
+
+    if (isUserClone || isBookmarked || isLikedFromOther) {
+      resultMap.set(recipe.id, recipe);
+    }
+  });
+
+  return Array.from(resultMap.values());
+}
+
+/**
+ * Permanently purge all user-created recipes, bookmarks, and likes when an account is deleted
+ */
+export function purgeAllUserOwnedData(uid: string): void {
+  if (!uid) return;
+  try {
+    const all = getAllMasterRecipes();
+    const cleaned = all
+      .filter((r) => r.ownerId !== uid)
+      .map((r) => {
+        if (r.likedBy?.includes(uid)) {
+          const nextLikedBy = r.likedBy.filter((id) => id !== uid);
+          return {
+            ...r,
+            likedBy: nextLikedBy,
+            likesCount: Math.max(0, (r.likesCount || 1) - 1)
+          };
+        }
+        return r;
+      });
+    saveAllMasterRecipes(cleaned);
+    localStorage.removeItem(`${SQUARE_BOOKMARKS_KEY_PREFIX}${uid}`);
+  } catch (err) {
+    console.error('Failed to purge user owned data', err);
+  }
+}
+
+

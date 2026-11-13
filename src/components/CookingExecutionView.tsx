@@ -5,7 +5,8 @@ import {
   Sparkles, ExternalLink, ChefHat, Clock, Flame, 
   Timer, ShoppingCart, ArrowRight, RotateCcw, Calendar,
   Utensils, BookOpen, AlertCircle, Bell, Settings, ShoppingBag,
-  Volume2, Mic, Play, Pause, VolumeX, SkipForward, SkipBack
+  Volume2, Mic, Play, Pause, VolumeX, SkipForward, SkipBack,
+  Download, Edit3, Bookmark, GitFork, FileText, Save
 } from 'lucide-react';
 import { VideoPlayer } from './VideoPlayer';
 import { MarkCookingModal } from './MarkCookingModal';
@@ -15,42 +16,150 @@ import { QuickPurchaseModal } from './QuickPurchaseModal';
 import { CookingVoiceAssistant, CookingVoiceAssistantHandle } from './CookingVoiceAssistant';
 import { PurchaseItem } from '../utils/shoppingPlatforms';
 import { UserProfile } from '../types/auth';
+import { RecipeImportModal } from './RecipeImportModal';
+import { cloneRecipeToMyJournal } from '../utils/multiUserStorage';
+import { useI18n } from '../i18n/context';
 
 interface CookingExecutionViewProps {
   recipes: Recipe[];
+  publicRecipes?: Recipe[];
   onOpenRecipe: (recipe: Recipe) => void;
   onStartTimer?: (minutes: number, label: string) => void;
   currentUser?: UserProfile | null;
+  onEditRecipe?: (recipe: Recipe) => void;
+  onSaveRecipe?: (recipe: Recipe) => void;
+  onCloneRecipe?: (recipe: Recipe) => void;
 }
 
 export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
   recipes,
+  publicRecipes = [],
   onOpenRecipe,
   onStartTimer,
-  currentUser
+  currentUser,
+  onEditRecipe,
+  onSaveRecipe,
+  onCloneRecipe
 }) => {
+  const { language } = useI18n();
+
+  // Extra recipes imported from the Food Square during this session
+  const [extraImportedRecipes, setExtraImportedRecipes] = useState<Recipe[]>([]);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [showTweakPanel, setShowTweakPanel] = useState(false);
+  const [workbenchTweakNotes, setWorkbenchTweakNotes] = useState('');
+  const [tweakSavedToast, setTweakSavedToast] = useState<string | null>(null);
+
+  // Combined list of workbench recipes (user handbooks + any imported community dishes)
+  const allWorkbenchRecipes = useMemo(() => {
+    const map = new Map<string, Recipe>();
+    recipes.forEach((r) => map.set(r.id, r));
+    extraImportedRecipes.forEach((r) => {
+      if (!map.has(r.id)) map.set(r.id, r);
+    });
+    return Array.from(map.values());
+  }, [recipes, extraImportedRecipes]);
+
   // If no recipes, handle gracefully
-  const hasRecipes = recipes.length > 0;
+  const hasRecipes = allWorkbenchRecipes.length > 0;
   const [isShoppingListOpen, setIsShoppingListOpen] = useState(false);
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
 
   // Selected recipe to cook right now
   const [activeRecipeId, setActiveRecipeId] = useState<string>(
-    hasRecipes ? recipes[0].id : ''
+    hasRecipes ? allWorkbenchRecipes[0].id : ''
   );
   
   // Servings multiplier
-  const activeRecipe = recipes.find(r => r.id === activeRecipeId) || recipes[0] || null;
+  const activeRecipe = allWorkbenchRecipes.find(r => r.id === activeRecipeId) || allWorkbenchRecipes[0] || null;
   const [servings, setServings] = useState<number>(activeRecipe?.baseServings || 2);
+
+  // If activeRecipeId changes or is not in list, auto-select
+  useEffect(() => {
+    if (!activeRecipeId && allWorkbenchRecipes.length > 0) {
+      setActiveRecipeId(allWorkbenchRecipes[0].id);
+      setServings(allWorkbenchRecipes[0].baseServings || 2);
+    }
+  }, [activeRecipeId, allWorkbenchRecipes]);
 
   // When active recipe changes, sync baseServings and reset voice step
   const handleSelectRecipe = (id: string) => {
     setActiveRecipeId(id);
     setCurrentSpokenStepIndex(0);
-    const found = recipes.find(r => r.id === id);
+    const found = allWorkbenchRecipes.find(r => r.id === id);
     if (found) {
       setServings(found.baseServings || 2);
     }
+  };
+
+  // Import handler from RecipeImportModal
+  const handleSelectImportedRecipe = (selected: Recipe) => {
+    if (!allWorkbenchRecipes.some((r) => r.id === selected.id)) {
+      setExtraImportedRecipes((prev) => [selected, ...prev]);
+    }
+    setActiveRecipeId(selected.id);
+    setCurrentSpokenStepIndex(0);
+    setServings(selected.baseServings || 2);
+    setCheckedIngredients({});
+    setCheckedSteps({});
+    setCompletionToast(`已将《${selected.title}》导入下厨制作工作台！`);
+    setTimeout(() => setCompletionToast(null), 3000);
+  };
+
+  // Import & Edit handler
+  const handleSelectAndEditRecipe = (selected: Recipe) => {
+    handleSelectImportedRecipe(selected);
+    handleTriggerEditRecipe(selected);
+  };
+
+  // Trigger edit for a recipe
+  const handleTriggerEditRecipe = (target: Recipe) => {
+    const isOwner = currentUser && target.ownerId === currentUser.uid;
+    if (isOwner) {
+      if (onEditRecipe) {
+        onEditRecipe(target);
+      }
+    } else {
+      // It's from Food Square / someone else: clone to user's journal first
+      if (currentUser) {
+        const cloned = cloneRecipeToMyJournal(target, currentUser);
+        setExtraImportedRecipes((prev) => [cloned, ...prev]);
+        setActiveRecipeId(cloned.id);
+        if (onEditRecipe) {
+          onEditRecipe(cloned);
+        }
+        setCompletionToast(`已为您生成《${target.title}》的专属复刻副本，您可以自由增减调料与调整步骤！`);
+        setTimeout(() => setCompletionToast(null), 3500);
+      } else {
+        if (onEditRecipe) {
+          onEditRecipe(target);
+        }
+      }
+    }
+  };
+
+  // Save in-place workbench notes & tweaks to the recipe
+  const handleSaveWorkbenchTweaks = () => {
+    if (!activeRecipe || !onSaveRecipe) return;
+    const isOwner = currentUser && activeRecipe.ownerId === currentUser.uid;
+    const targetToSave: Recipe = isOwner ? activeRecipe : (
+      currentUser ? cloneRecipeToMyJournal(activeRecipe, currentUser) : activeRecipe
+    );
+
+    const updatedRecipe: Recipe = {
+      ...targetToSave,
+      baseServings: servings,
+      review: {
+        ...targetToSave.review,
+        tastingNotes: workbenchTweakNotes.trim()
+          ? (targetToSave.review.tastingNotes ? `${targetToSave.review.tastingNotes}\n\n【下厨备忘】：${workbenchTweakNotes.trim()}` : `【下厨备忘】：${workbenchTweakNotes.trim()}`)
+          : targetToSave.review.tastingNotes
+      }
+    };
+
+    onSaveRecipe(updatedRecipe);
+    setTweakSavedToast('已将本次下厨备忘与人份设置保存至手帐！');
+    setTimeout(() => setTweakSavedToast(null), 3000);
   };
 
   // Checked state for ingredients
@@ -312,6 +421,38 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
               </button>
             )}
 
+            {/* Import from My Handbooks or Square Saved */}
+            <button
+              type="button"
+              onClick={() => setIsImportModalOpen(true)}
+              className="min-h-[44px] px-3.5 py-2 text-xs font-bold text-white bg-gradient-to-r from-[#C85A32] to-[#B34C26] hover:from-[#B34C26] hover:to-[#9E3F1A] rounded-xl shadow-xs transition-all flex items-center gap-1.5 active:scale-98"
+              title="导入自己的私房手帐或食味广场收藏的他人家常菜"
+            >
+              <Download className="w-4 h-4" />
+              <span>{language === 'zh-CN' ? '导入手帐制作' : 'Import Recipe'}</span>
+            </button>
+
+            {/* Edit active recipe */}
+            {activeRecipe && (
+              <button
+                type="button"
+                onClick={() => handleTriggerEditRecipe(activeRecipe)}
+                className="min-h-[44px] px-3.5 py-2 text-xs font-bold text-[#C85A32] bg-[#FAF3EC] hover:bg-[#C85A32] hover:text-white border border-[#C85A32]/40 rounded-xl transition-all flex items-center gap-1.5 shadow-2xs active:scale-98"
+                title={
+                  activeRecipe.ownerId === currentUser?.uid 
+                    ? '进入手帐完整编辑界面，修改食材、步骤与火候' 
+                    : '复制为我的专属手帐并自由修改定制'
+                }
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>
+                  {activeRecipe.ownerId === currentUser?.uid 
+                    ? (language === 'zh-CN' ? '编辑此手帐' : 'Edit Recipe')
+                    : (language === 'zh-CN' ? '定制复刻此菜' : 'Fork & Edit')}
+                </span>
+              </button>
+            )}
+
             <button
               onClick={handleResetChecklist}
               className="min-h-[44px] px-3 py-2 text-xs font-medium text-[#7A7268] hover:text-[#2C2723] bg-[#FAF7F2] hover:bg-[#EADBCE]/50 border border-[#EADBCE] rounded-xl transition-colors flex items-center gap-1.5"
@@ -323,7 +464,7 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
             {activeRecipe && (
               <button
                 onClick={() => onOpenRecipe(activeRecipe)}
-                className="min-h-[44px] px-3.5 py-2 text-xs font-semibold text-[#C85A32] bg-[#FAF3EC] hover:bg-[#C85A32] hover:text-white border border-[#C85A32]/40 rounded-xl transition-all flex items-center gap-1.5"
+                className="min-h-[44px] px-3.5 py-2 text-xs font-semibold text-[#5A5248] bg-white hover:bg-[#FAF7F2] border border-[#EADBCE] rounded-xl transition-all flex items-center gap-1.5"
               >
                 <BookOpen className="w-3.5 h-3.5" />
                 <span>查看完整食谱</span>
@@ -364,11 +505,31 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
         
         {/* Horizontal Recipe Chips Selector */}
         <div className="flex-1 min-w-0">
-          <label className="block text-[11px] font-semibold text-[#7A7268] mb-1.5">
-            当前制作的菜谱：
-          </label>
+          <div className="flex items-center justify-between gap-2 mb-1.5">
+            <label className="block text-[11px] font-semibold text-[#7A7268]">
+              {language === 'zh-CN' ? '工作台当前制作中的菜谱：' : 'Active Recipe in Workbench:'}
+            </label>
+            <button
+              type="button"
+              onClick={() => setIsImportModalOpen(true)}
+              className="text-xs font-bold text-[#C85A32] hover:text-[#B34C26] inline-flex items-center gap-1"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>{language === 'zh-CN' ? '导入私房或广场收藏' : 'Import Recipe'}</span>
+            </button>
+          </div>
           <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
-            {recipes.map((r) => {
+            <button
+              type="button"
+              onClick={() => setIsImportModalOpen(true)}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 bg-[#FAF3EC] text-[#C85A32] hover:bg-[#C85A32] hover:text-white border border-[#C85A32]/40 shrink-0"
+              title="从我的私房手帐或广场收藏中导入"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>{language === 'zh-CN' ? '导入新手帐' : 'Import'}</span>
+            </button>
+
+            {allWorkbenchRecipes.map((r) => {
               const isSelected = r.id === activeRecipeId;
               return (
                 <button
@@ -380,6 +541,9 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
                       : 'bg-[#FAF7F2] text-[#5A5248] hover:bg-white border border-[#EADBCE]'
                   }`}
                 >
+                  {r.originalSource && (
+                    <GitFork className="w-3 h-3 text-amber-300 shrink-0" />
+                  )}
                   <span>{r.title}</span>
                 </button>
               );
@@ -427,6 +591,156 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
         </div>
 
       </div>
+
+      {/* 2.5 Active Recipe Focus Banner & In-Place Tweaks */}
+      {activeRecipe ? (
+        <div className="bg-white border border-[#EADBCE] rounded-2xl p-4 sm:p-5 paper-shadow space-y-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-start sm:items-center gap-3.5">
+              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden bg-[#FAF7F2] border border-[#EADBCE] shrink-0">
+                {activeRecipe.coverImage ? (
+                  <img src={activeRecipe.coverImage} alt={activeRecipe.title} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-2xl">🍲</div>
+                )}
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#FAF7F2] border border-[#EADBCE] text-[#7A7268]">
+                    {activeRecipe.category}
+                  </span>
+                  {activeRecipe.subCategory && (
+                    <span className="text-[10px] font-semibold text-[#C85A32]">
+                      {activeRecipe.subCategory}
+                    </span>
+                  )}
+                  {activeRecipe.originalSource ? (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#5F7A4D]/10 text-[#5F7A4D] font-bold flex items-center gap-1 border border-[#5F7A4D]/20">
+                      <GitFork className="w-3 h-3" />
+                      <span>{language === 'zh-CN' ? `来自 @${activeRecipe.originalSource.authorName} 的私房菜` : `From @${activeRecipe.originalSource.authorName}`}</span>
+                    </span>
+                  ) : activeRecipe.ownerId && activeRecipe.ownerId !== currentUser?.uid && activeRecipe.authorName ? (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 font-bold flex items-center gap-1 border border-amber-300/40">
+                      <span>{language === 'zh-CN' ? `广场作者 @${activeRecipe.authorName}` : `@${activeRecipe.authorName}`}</span>
+                    </span>
+                  ) : (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 font-bold flex items-center gap-1 border border-emerald-200">
+                      <BookOpen className="w-3 h-3" />
+                      <span>{language === 'zh-CN' ? '我的原创手帐' : 'My Journal'}</span>
+                    </span>
+                  )}
+                </div>
+
+                <h2 className="text-lg sm:text-xl font-bold font-journal-title text-[#2C2723]">
+                  {activeRecipe.title}
+                </h2>
+                <p className="text-xs text-[#7A7268] font-serif">
+                  {activeRecipe.subtitle || `${activeRecipe.ingredients.length} 味食材 · ${activeRecipe.steps.length} 步火候 · 预计耗时 ${activeRecipe.cookTimeMinutes} 分钟`}
+                </p>
+              </div>
+            </div>
+
+            {/* Quick Workbench Action Buttons */}
+            <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setShowTweakPanel(!showTweakPanel)}
+                className={`min-h-[40px] px-3.5 py-2 text-xs font-semibold rounded-xl border transition-all flex items-center gap-1.5 shadow-2xs ${
+                  showTweakPanel
+                    ? 'bg-[#2C2723] text-white border-[#2C2723]'
+                    : 'bg-[#FAF7F2] hover:bg-white text-[#5A5248] border-[#EADBCE]'
+                }`}
+              >
+                <Edit3 className="w-3.5 h-3.5 text-[#C85A32]" />
+                <span>{showTweakPanel ? (language === 'zh-CN' ? '收起微调备忘' : 'Hide Tweaks') : (language === 'zh-CN' ? '下厨微调与备忘' : 'Quick Tweaks')}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleTriggerEditRecipe(activeRecipe)}
+                className="min-h-[40px] px-3.5 py-2 bg-[#C85A32] hover:bg-[#B34C26] text-white text-xs font-bold rounded-xl shadow-2xs transition-all flex items-center gap-1.5 active:scale-98"
+                title="进入全功能手帐编辑器，自由增删食材、微调各步耗时与火候"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>
+                  {activeRecipe.ownerId === currentUser?.uid 
+                    ? (language === 'zh-CN' ? '进入完整手帐编辑' : 'Edit Recipe') 
+                    : (language === 'zh-CN' ? '复制并自由定制此菜' : 'Fork & Customize')}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* Expandable In-Place Workbench Tweak Panel */}
+          {showTweakPanel && (
+            <div className="pt-4 border-t border-[#F0E6DC] bg-[#FAF7F2]/80 p-4 rounded-xl space-y-3 animate-fade-in">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-bold text-[#2C2723] flex items-center gap-1.5">
+                  <FileText className="w-4 h-4 text-[#C85A32]" />
+                  <span>{language === 'zh-CN' ? '本次下厨个性微调与即时备忘' : 'Cook Session Tweaks & Notes'}</span>
+                </span>
+                <span className="text-[11px] text-[#7A7268]">
+                  {language === 'zh-CN' ? '记录本次调味增减、火候体验或备忘心得' : 'Record taste adjustments or heat notes'}
+                </span>
+              </div>
+
+              <textarea
+                value={workbenchTweakNotes}
+                onChange={(e) => setWorkbenchTweakNotes(e.target.value)}
+                placeholder={
+                  language === 'zh-CN'
+                    ? '例如：生抽比平时多加了半勺，最后收汁火候改用微火焖了2分钟；下次可以再加几粒青花椒提香...'
+                    : 'Notes: e.g. Used less salt, reduced heat at step 3, added garnish...'
+                }
+                rows={2}
+                className="w-full p-2.5 bg-white text-xs text-[#2C2723] border border-[#EADBCE] rounded-xl focus:outline-hidden focus:border-[#C85A32] placeholder-[#A89F91]"
+              />
+
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] text-[#A89F91]">
+                  {tweakSavedToast && (
+                    <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                      <Check className="w-3.5 h-3.5" />
+                      <span>{tweakSavedToast}</span>
+                    </span>
+                  )}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={handleSaveWorkbenchTweaks}
+                  className="px-3.5 py-1.5 bg-[#5F7A4D] hover:bg-[#4E663E] text-white text-xs font-bold rounded-lg shadow-2xs transition-colors flex items-center gap-1.5 active:scale-98"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>{language === 'zh-CN' ? '保存修改至手帐' : 'Save to Recipe'}</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Empty state: No active recipe on workbench */
+        <div className="bg-white border border-[#EADBCE] rounded-2xl p-8 text-center paper-shadow space-y-3">
+          <Utensils className="w-12 h-12 text-[#C85A32]/40 mx-auto" />
+          <h3 className="text-base font-bold font-journal-title text-[#2C2723]">
+            {language === 'zh-CN' ? '工作台尚未导入制作菜谱' : 'No Recipe Loaded in Workbench'}
+          </h3>
+          <p className="text-xs text-[#7A7268] max-w-md mx-auto">
+            {language === 'zh-CN'
+              ? '您可以随时从自己的手帐本导入，或从食味广场挑选收藏的他人家常菜，开启一步一步逐步打勾制作！'
+              : 'Import your own recipe or saved community dishes to start guided cooking!'}
+          </p>
+          <button
+            type="button"
+            onClick={() => setIsImportModalOpen(true)}
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#C85A32] hover:bg-[#B34C26] text-white text-xs font-bold rounded-xl shadow-xs transition-all"
+          >
+            <Download className="w-4 h-4" />
+            <span>{language === 'zh-CN' ? '立即导入手帐菜谱' : 'Import Recipe Now'}</span>
+          </button>
+        </div>
+      )}
 
       {/* 3. Main Workspace: Phase 1 Ingredients & Phase 2 Cooking Steps */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -1249,6 +1563,20 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
             </button>
           </div>
         </aside>
+      )}
+
+      {/* Recipe Importer Modal */}
+      {isImportModalOpen && (
+        <RecipeImportModal
+          isOpen={isImportModalOpen}
+          onClose={() => setIsImportModalOpen(false)}
+          userRecipes={recipes}
+          publicRecipes={publicRecipes}
+          currentUser={currentUser || null}
+          onSelectRecipe={handleSelectImportedRecipe}
+          onSelectAndEditRecipe={handleSelectAndEditRecipe}
+          currentActiveRecipeId={activeRecipeId}
+        />
       )}
 
       {/* Completion Toast */}

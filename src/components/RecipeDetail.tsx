@@ -25,6 +25,7 @@ interface RecipeDetailProps {
   onShare: (recipe: Recipe) => void;
   onUpdateRecipe: (updated: Recipe) => void;
   onStartTimer: (minutes: number, label: string) => void;
+  onStartCooking?: (recipe: Recipe) => void;
 }
 
 export const RecipeDetail: React.FC<RecipeDetailProps> = ({
@@ -34,7 +35,8 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
   onDelete,
   onShare,
   onUpdateRecipe,
-  onStartTimer
+  onStartTimer,
+  onStartCooking
 }) => {
   const { t, language, getCategoryLabel, getSubcategoryLabel, getDifficultyLabel, getHeatLabel, getWeatherLabel, formatMinutes, formatServings } = useI18n();
 
@@ -186,6 +188,18 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
           >
             <span>{t('detail.shareLink', '🔗 分享链接')}</span>
           </button>
+
+          {onStartCooking && (
+            <button
+              type="button"
+              onClick={() => onStartCooking(recipe)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-gradient-to-r from-[#5F7A4D] to-[#4E663E] hover:from-[#4E663E] hover:to-[#3E5232] rounded-md transition-all shadow-2xs active:scale-[0.98]"
+              title={language === 'zh-CN' ? '一键导入到下厨制作工作台，逐步核对备料与时序' : 'Import to Workbench'}
+            >
+              <ChefHat className="w-3.5 h-3.5" />
+              <span>{language === 'zh-CN' ? '导入工作台制作' : 'Cook in Workbench'}</span>
+            </button>
+          )}
 
           <button
             onClick={() => setIsMarkModalOpen(true)}

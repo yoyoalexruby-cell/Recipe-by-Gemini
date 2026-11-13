@@ -154,21 +154,25 @@
   }
 
   /* Hide app header, navigation, floating buttons, toasts, and overlays */
-  header, nav, aside, footer, .no-print, [role="dialog"] > div:first-child:not(#recipe-print-document) {
+  header, nav, aside, footer, .no-print, [role="dialog"] > div:first-child:not(#recipe-print-document):not(#annual-report-print-document) {
     display: none !important;
   }
 
-  /* Visibility isolation: Only render #recipe-print-document when the export modal is active */
-  body:has(#recipe-print-document) * {
+  /* Visibility isolation: Only render #recipe-print-document or #annual-report-print-document when the export modal is active */
+  body:has(#recipe-print-document) *,
+  body:has(#annual-report-print-document) * {
     visibility: hidden;
   }
 
   body:has(#recipe-print-document) #recipe-print-document,
-  body:has(#recipe-print-document) #recipe-print-document * {
+  body:has(#recipe-print-document) #recipe-print-document *,
+  body:has(#annual-report-print-document) #annual-report-print-document,
+  body:has(#annual-report-print-document) #annual-report-print-document * {
     visibility: visible;
   }
 
-  #recipe-print-document {
+  #recipe-print-document,
+  #annual-report-print-document {
     position: absolute !important;
     left: 0 !important;
     top: 0 !important;
@@ -182,30 +186,35 @@
   }
 
   /* Vintage mode in print */
-  body.print-vintage #recipe-print-document {
+  body.print-vintage #recipe-print-document,
+  body.print-vintage #annual-report-print-document {
     background-color: #FAF7F2 !important;
     color: #2C2723 !important;
   }
 
   /* Kraft paper mode in print */
-  body.print-kraft #recipe-print-document {
+  body.print-kraft #recipe-print-document,
+  body.print-kraft #annual-report-print-document {
     background-color: #F5EFEB !important;
     color: #261910 !important;
   }
 
   /* Botanical green mode in print */
-  body.print-botanical #recipe-print-document {
+  body.print-botanical #recipe-print-document,
+  body.print-botanical #annual-report-print-document {
     background-color: #F8FAF7 !important;
     color: #1E281C !important;
   }
 
   /* Minimal ink mode for black & white printers */
-  body.print-minimal-ink #recipe-print-document {
+  body.print-minimal-ink #recipe-print-document,
+  body.print-minimal-ink #annual-report-print-document {
     background-color: #FFFFFF !important;
     color: #000000 !important;
   }
 
-  body.print-minimal-ink #recipe-print-document * {
+  body.print-minimal-ink #recipe-print-document *,
+  body.print-minimal-ink #annual-report-print-document * {
     color: #000000 !important;
     border-color: #333333 !important;
   }

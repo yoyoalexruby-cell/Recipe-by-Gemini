@@ -120,37 +120,93 @@ export const HEAT_TRANSLATIONS: Record<string, Record<SupportedLanguage, string>
   '文火': { 'zh-CN': '文火', 'en-US': 'Gentle Simmer', 'ja-JP': '極弱火', 'fr-FR': 'Feu très doux', 'es-ES': 'A fuego lento' },
 };
 
+// Bidirectional Canonical Index Maps
+const CANONICAL_CATEGORY_MAP: Record<string, string> = {};
+for (const [zhKey, translations] of Object.entries(CATEGORY_TRANSLATIONS)) {
+  CANONICAL_CATEGORY_MAP[zhKey.toLowerCase()] = zhKey;
+  for (const val of Object.values(translations)) {
+    CANONICAL_CATEGORY_MAP[val.toLowerCase()] = zhKey;
+  }
+}
+
+const CANONICAL_SUBCATEGORY_MAP: Record<string, string> = {};
+for (const [zhKey, translations] of Object.entries(SUBCATEGORY_TRANSLATIONS)) {
+  CANONICAL_SUBCATEGORY_MAP[zhKey.toLowerCase()] = zhKey;
+  for (const val of Object.values(translations)) {
+    CANONICAL_SUBCATEGORY_MAP[val.toLowerCase()] = zhKey;
+  }
+}
+
+const CANONICAL_HEAT_MAP: Record<string, string> = {};
+for (const [zhKey, translations] of Object.entries(HEAT_TRANSLATIONS)) {
+  CANONICAL_HEAT_MAP[zhKey.toLowerCase()] = zhKey;
+  for (const val of Object.values(translations)) {
+    CANONICAL_HEAT_MAP[val.toLowerCase()] = zhKey;
+  }
+}
+
+const CANONICAL_DIFFICULTY_MAP: Record<string, string> = {};
+for (const [numKey, translations] of Object.entries(DIFFICULTY_TRANSLATIONS)) {
+  CANONICAL_DIFFICULTY_MAP[numKey] = numKey;
+  for (const val of Object.values(translations)) {
+    CANONICAL_DIFFICULTY_MAP[val.toLowerCase()] = numKey;
+  }
+}
+
+const WEATHER_TRANSLATIONS: Record<string, Record<SupportedLanguage, string>> = {
+  '晴空万里': { 'zh-CN': '晴空万里', 'en-US': 'Sunny & Clear', 'ja-JP': '快晴・青空', 'fr-FR': 'Grand Soleil', 'es-ES': 'Soleado y Despejado' },
+  '微风暖阳': { 'zh-CN': '微风暖阳', 'en-US': 'Warm Breeze', 'ja-JP': '心地よい風', 'fr-FR': 'Douce Brise', 'es-ES': 'Brisa Cálida' },
+  '小雨沥沥': { 'zh-CN': '小雨沥沥', 'en-US': 'Gentle Rain', 'ja-JP': '小雨・しとしと', 'fr-FR': 'Pluie Douce', 'es-ES': 'Lluvia Fina' },
+  '阴天微凉': { 'zh-CN': '阴天微凉', 'en-US': 'Cool & Cloudy', 'ja-JP': '曇り・涼しい', 'fr-FR': 'Nuageux & Frais', 'es-ES': 'Nublado y Fresco' },
+  '雪花纷飞': { 'zh-CN': '雪花纷飞', 'en-US': 'Snowy Winter', 'ja-JP': '雪景色', 'fr-FR': 'Flacons de Neige', 'es-ES': 'Nevada' },
+  '秋高气爽': { 'zh-CN': '秋高气爽', 'en-US': 'Crisp Autumn', 'ja-JP': '秋晴れ', 'fr-FR': 'Automne Radieux', 'es-ES': 'Otoño Fresco' },
+  '初春明媚': { 'zh-CN': '初春明媚', 'en-US': 'Bright Spring', 'ja-JP': '春うらら', 'fr-FR': 'Printemps Lumineux', 'es-ES': 'Primavera Luminosa' },
+  '夏夜蝉鸣': { 'zh-CN': '夏夜蝉鸣', 'en-US': 'Summer Night', 'ja-JP': '夏の夜', 'fr-FR': 'Nuit d’Été', 'es-ES': 'Noche de Verano' },
+};
+
+const CANONICAL_WEATHER_MAP: Record<string, string> = {};
+for (const [zhKey, translations] of Object.entries(WEATHER_TRANSLATIONS)) {
+  CANONICAL_WEATHER_MAP[zhKey.toLowerCase()] = zhKey;
+  for (const val of Object.values(translations)) {
+    CANONICAL_WEATHER_MAP[val.toLowerCase()] = zhKey;
+  }
+}
+
 export function getCategoryLabel(category: string, lang: SupportedLanguage): string {
-  if (lang === 'zh-CN') return category;
-  return CATEGORY_TRANSLATIONS[category]?.[lang] || CATEGORY_TRANSLATIONS[category]?.['en-US'] || category;
+  if (!category) return '';
+  const trimmed = category.trim();
+  const canonical = CANONICAL_CATEGORY_MAP[trimmed.toLowerCase()] || trimmed;
+  if (lang === 'zh-CN') return canonical;
+  return CATEGORY_TRANSLATIONS[canonical]?.[lang] || CATEGORY_TRANSLATIONS[canonical]?.['en-US'] || category;
 }
 
 export function getSubcategoryLabel(subCategory: string, lang: SupportedLanguage): string {
-  if (lang === 'zh-CN') return subCategory;
-  return SUBCATEGORY_TRANSLATIONS[subCategory]?.[lang] || SUBCATEGORY_TRANSLATIONS[subCategory]?.['en-US'] || subCategory;
+  if (!subCategory) return '';
+  const trimmed = subCategory.trim();
+  const canonical = CANONICAL_SUBCATEGORY_MAP[trimmed.toLowerCase()] || trimmed;
+  if (lang === 'zh-CN') return canonical;
+  return SUBCATEGORY_TRANSLATIONS[canonical]?.[lang] || SUBCATEGORY_TRANSLATIONS[canonical]?.['en-US'] || subCategory;
 }
 
 export function getDifficultyLabel(diff: number | string, lang: SupportedLanguage): string {
-  const key = String(diff || '3');
-  return DIFFICULTY_TRANSLATIONS[key]?.[lang] || DIFFICULTY_TRANSLATIONS[key]?.['en-US'] || `Level ${key}`;
+  if (!diff) return lang === 'zh-CN' ? '进阶火候' : 'Intermediate';
+  const raw = String(diff).trim().toLowerCase();
+  const canonicalNum = CANONICAL_DIFFICULTY_MAP[raw] || '3';
+  return DIFFICULTY_TRANSLATIONS[canonicalNum]?.[lang] || DIFFICULTY_TRANSLATIONS[canonicalNum]?.['en-US'] || `Level ${canonicalNum}`;
 }
 
 export function getHeatLabel(heat: string, lang: SupportedLanguage): string {
-  if (lang === 'zh-CN') return heat;
-  return HEAT_TRANSLATIONS[heat]?.[lang] || HEAT_TRANSLATIONS[heat]?.['en-US'] || heat;
+  if (!heat) return '';
+  const trimmed = heat.trim();
+  const canonical = CANONICAL_HEAT_MAP[trimmed.toLowerCase()] || trimmed;
+  if (lang === 'zh-CN') return canonical;
+  return HEAT_TRANSLATIONS[canonical]?.[lang] || HEAT_TRANSLATIONS[canonical]?.['en-US'] || heat;
 }
 
 export function getWeatherLabel(weather: string, lang: SupportedLanguage): string {
-  if (!weather || lang === 'zh-CN') return weather;
-  const weatherMap: Record<string, string> = {
-    '晴空万里': 'Sunny & Clear',
-    '微风暖阳': 'Warm Breeze',
-    '小雨沥沥': 'Gentle Rain',
-    '阴天微凉': 'Cool & Cloudy',
-    '雪花纷飞': 'Snowy Winter',
-    '秋高气爽': 'Crisp Autumn',
-    '初春明媚': 'Bright Spring',
-    '夏夜蝉鸣': 'Summer Night',
-  };
-  return weatherMap[weather] || weather;
+  if (!weather) return '';
+  const trimmed = weather.trim();
+  const canonical = CANONICAL_WEATHER_MAP[trimmed.toLowerCase()] || trimmed;
+  if (lang === 'zh-CN') return canonical;
+  return WEATHER_TRANSLATIONS[canonical]?.[lang] || WEATHER_TRANSLATIONS[canonical]?.['en-US'] || weather;
 }
