@@ -55,54 +55,28 @@
               return target;
             }
           }
-          try {
-            return origDefineProperty.call(Object, target, prop, descriptor);
-          } catch (err) {
-            if (
-              isWindowTarget(target) &&
-              err instanceof TypeError &&
-              String(err.message || '').indexOf('Cannot redefine property') !== -1
-            ) {
-              return target;
-            }
-            throw err;
-          }
+          return origDefineProperty.call(Object, target, prop, descriptor);
         };
 
         if (origDefineProperties) {
           Object.defineProperties = function(target, props) {
             if (isWindowTarget(target) && props && typeof props === 'object') {
-              try {
-                var keys = Object.keys(props);
-                var hasWalletKey = false;
-                for (var i = 0; i < keys.length; i++) {
-                  if (WALLET_GLOBALS[keys[i]]) {
-                    hasWalletKey = true;
-                    break;
-                  }
+              var keys = Object.keys(props);
+              var hasWalletKey = false;
+              for (var i = 0; i < keys.length; i++) {
+                if (WALLET_GLOBALS[keys[i]]) {
+                  hasWalletKey = true;
+                  break;
                 }
-                if (hasWalletKey) {
-                  for (var j = 0; j < keys.length; j++) {
-                    Object.defineProperty(target, keys[j], props[keys[j]]);
-                  }
-                  return target;
+              }
+              if (hasWalletKey) {
+                for (var j = 0; j < keys.length; j++) {
+                  Object.defineProperty(target, keys[j], props[keys[j]]);
                 }
-              } catch (_e) {
                 return target;
               }
             }
-            try {
-              return origDefineProperties.call(Object, target, props);
-            } catch (err) {
-              if (
-                isWindowTarget(target) &&
-                err instanceof TypeError &&
-                String(err.message || '').indexOf('Cannot redefine property') !== -1
-              ) {
-                return target;
-              }
-              throw err;
-            }
+            return origDefineProperties.call(Object, target, props);
           };
         }
 
@@ -117,11 +91,7 @@
                 return true;
               }
             }
-            try {
-              return origReflectDefineProperty.call(Reflect, target, prop, descriptor);
-            } catch (_e) {
-              return false;
-            }
+            return origReflectDefineProperty.call(Reflect, target, prop, descriptor);
           };
         }
       })();

@@ -3,14 +3,16 @@ import { Recipe } from '../types/recipe';
 import { UserProfile } from '../types/auth';
 import {
   MASTER_RECIPES_KEY,
-  getAllMasterRecipes,
   getUserRecipes,
-  saveAllMasterRecipes,
   resetToInitialPresets,
 } from '../utils/multiUserStorage';
+import {
+  CURRENT_BACKUP_VERSION,
+  downloadFullBackupJson,
+  restoreFullBackupBundle,
+} from '../utils/fullBackupService';
 import { estimateTotalStorageUsage, StorageHealthMetrics } from '../utils/mediaStorage';
 import { getGitHubConfig } from '../utils/githubSync';
-import { formatLocalDate } from '../utils/dateUtils';
 import {
   Download,
   Upload,
@@ -23,136 +25,13 @@ import {
   AlertCircle,
   HardDrive,
   Film,
+  Loader2,
 } from 'lucide-react';
 
 /**
- * 统一主存储 Key ('food_journal_master_recipes_v2') 与备份文件版本号 ('1.2.0') 定义
+ * 统一主存储 Key ('food_journal_master_recipes_v2') 与全量备份版本号 ('1.2.0')
  */
 const BACKUP_STORAGE_KEY: typeof MASTER_RECIPES_KEY = 'food_journal_master_recipes_v2';
-const CURRENT_BACKUP_VERSION = '1.2.0';
-const MAX_SUPPORTED_MAJOR = 2;
-const SUPPORTED_VERSIONS = new Set(['1', '1.0', '1.1.0', '1.2', '1.2.0', '2', '2.0']);
-
-export interface VersionedRecipeBackup {
-  version: '1.2.0' | string;
-  storageKey: typeof BACKUP_STORAGE_KEY;
-  app: 'culinary-journal';
-  exportedAt: string;
-  scope: 'current-user' | 'master-all';
-  accountUid: string;
-  totalRecipes: number;
-  recipes: Recipe[];
-}
-
-interface SchemaValidationResult {
-  validRecipes: Recipe[];
-  skippedCount: number;
-  detectedVersion: string;
-}
-
-/**
- * 严格校验单条菜谱结构是否合法
- */
-function validateSingleRecipeSchema(item: unknown): item is Recipe {
-  if (!item || typeof item !== 'object') return false;
-  const r = item as Record<string, unknown>;
-
-  if (typeof r.id !== 'string' || r.id.trim().length === 0) return false;
-  if (typeof r.title !== 'string' || r.title.trim().length === 0) return false;
-  if (!Array.isArray(r.ingredients) || !Array.isArray(r.steps)) return false;
-
-  const ingredientsValid = r.ingredients.every(
-    (ing) =>
-      Boolean(ing) &&
-      typeof ing === 'object' &&
-      typeof (ing as Record<string, unknown>).name === 'string'
-  );
-  const stepsValid = r.steps.every(
-    (st) =>
-      Boolean(st) &&
-      typeof st === 'object' &&
-      (typeof (st as Record<string, unknown>).title === 'string' ||
-        typeof (st as Record<string, unknown>).description === 'string')
-  );
-
-  return ingredientsValid && stepsValid;
-}
-
-/**
- * 校验备份 JSON 的版本号字段与食谱数组 Schema
- */
-function parseAndValidateBackupPayload(rawJson: unknown): SchemaValidationResult {
-  // 兼容旧版 v1 纯数组备份
-  if (Array.isArray(rawJson)) {
-    const validRecipes: Recipe[] = [];
-    let skippedCount = 0;
-    for (const entry of rawJson) {
-      if (validateSingleRecipeSchema(entry)) {
-        validRecipes.push(entry);
-      } else {
-        skippedCount++;
-      }
-    }
-    return {
-      validRecipes,
-      skippedCount,
-      detectedVersion: '1.0 (legacy-array)',
-    };
-  }
-
-  if (!rawJson || typeof rawJson !== 'object') {
-    throw new Error('备份文件格式错误：根节点必须是包含 version 与 recipes 字段的 JSON 对象或食谱数组。');
-  }
-
-  const envelope = rawJson as Record<string, unknown>;
-  const rawVersion =
-    envelope.version !== undefined
-      ? String(envelope.version)
-      : envelope.schemaVersion !== undefined
-      ? String(envelope.schemaVersion)
-      : '';
-
-  if (!rawVersion) {
-    throw new Error('备份文件缺少 version 版本号字段，无法通过 Schema 校验。');
-  }
-
-  const majorNum = parseInt(rawVersion.split('.')[0] || '0', 10);
-  if (
-    Number.isNaN(majorNum) ||
-    majorNum > MAX_SUPPORTED_MAJOR ||
-    (!SUPPORTED_VERSIONS.has(rawVersion) && majorNum < 1)
-  ) {
-    throw new Error(
-      `不支持的备份版本号 (version: ${rawVersion})，当前应用支持的版本为 1.0 – ${CURRENT_BACKUP_VERSION}。`
-    );
-  }
-
-  const listCandidate = Array.isArray(envelope.recipes)
-    ? envelope.recipes
-    : Array.isArray(envelope.masterRecipes)
-    ? envelope.masterRecipes
-    : null;
-
-  if (!listCandidate) {
-    throw new Error('备份文件缺少有效的 recipes 食谱列表数组。');
-  }
-
-  const validRecipes: Recipe[] = [];
-  let skippedCount = 0;
-  for (const entry of listCandidate) {
-    if (validateSingleRecipeSchema(entry)) {
-      validRecipes.push(entry);
-    } else {
-      skippedCount++;
-    }
-  }
-
-  return {
-    validRecipes,
-    skippedCount,
-    detectedVersion: rawVersion,
-  };
-}
 
 interface BackupViewProps {
   recipes: Recipe[];
@@ -184,6 +63,10 @@ export const BackupView: React.FC<BackupViewProps> = ({
   } | null>(null);
   const [confirmingReset, setConfirmingReset] = useState(false);
   const [storageMetrics, setStorageMetrics] = useState<StorageHealthMetrics | null>(null);
+  const [includeMediaBlobs, setIncludeMediaBlobs] = useState(true);
+  const [remapToCurrentAccount, setRemapToCurrentAccount] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
 
   const refreshStorageMetrics = useCallback(() => {
     estimateTotalStorageUsage()
@@ -200,106 +83,79 @@ export const BackupView: React.FC<BackupViewProps> = ({
   };
 
   /**
-   * 导出带 'version': '1.2.0' 与 storageKey 元信息的标准备份 JSON
+   * 导出全量手帐状态包（含食谱、烹饪日历打卡、自定义分类、采购清单、广场收藏、大赛作品、成长成就及可选离线视频包）
    */
-  const handleExport = () => {
-    const backupPayload: VersionedRecipeBackup = {
-      version: CURRENT_BACKUP_VERSION,
-      storageKey: BACKUP_STORAGE_KEY,
-      app: 'culinary-journal',
-      exportedAt: new Date().toISOString(),
-      scope: 'current-user',
-      accountUid: currentUser?.uid || 'guest',
-      totalRecipes: recipes.length,
-      recipes,
-    };
-
-    const jsonStr = JSON.stringify(backupPayload, null, 2);
-    const blob = new Blob([jsonStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `食味手记_食谱备份_v${CURRENT_BACKUP_VERSION}_${formatLocalDate()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-
-    showBanner(
-      'success',
-      `已生成并下载备份文件 (version: ${CURRENT_BACKUP_VERSION}, key: ${BACKUP_STORAGE_KEY}，共 ${recipes.length} 篇食谱)。`
-    );
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      const { recipeCount, mediaCount, cookingLogCount } = await downloadFullBackupJson(
+        currentUser,
+        { includeMediaBlobs }
+      );
+      showBanner(
+        'success',
+        `全量备份已生成 (version: ${CURRENT_BACKUP_VERSION}, key: ${BACKUP_STORAGE_KEY})：含 ${recipeCount} 篇食谱、${cookingLogCount} 条烹饪日历记录、自定义分类、采购偏好、收藏夹${
+          includeMediaBlobs ? `及 ${mediaCount} 段离线视频媒体` : '（未包含离线视频二进制）'
+        }。`
+      );
+    } catch (err) {
+      showBanner(
+        'error',
+        err instanceof Error ? err.message : '生成全量备份文件失败，请稍后重试。'
+      );
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   /**
-   * 导入备份文件：执行版本号与字段 Schema 校验后，按 ID 合并写入统一主存储 'food_journal_master_recipes_v2'
+   * 导入全量或旧版备份：执行 Schema 校验、恢复离线视频至 IndexedDB、并将跨设备旧账号 ownerId 自动映射至当前账号
    */
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setIsImporting(true);
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const parsedJson = JSON.parse(event.target?.result as string);
-        const { validRecipes, skippedCount, detectedVersion } =
-          parseAndValidateBackupPayload(parsedJson);
+        const res = await restoreFullBackupBundle(parsedJson, currentUser, {
+          remapToCurrentAccount,
+        });
 
-        if (validRecipes.length === 0) {
-          showBanner(
-            'error',
-            `Schema 校验未通过：备份文件 (v${detectedVersion}) 中没有符合规范的有效食谱（共跳过 ${skippedCount} 条异常记录）。`
-          );
-          return;
-        }
-
-        // 读取主存储 'food_journal_master_recipes_v2' 并按 ID 合并
-        const currentMaster = getAllMasterRecipes();
-        const masterMap = new Map<string, Recipe>(currentMaster.map((r) => [r.id, r]));
-        const targetOwnerId = currentUser ? currentUser.uid : 'guest';
-        const targetAuthorName = currentUser ? currentUser.displayName : '本机主厨';
-        const today = formatLocalDate();
-
-        let addedCount = 0;
-        let updatedCount = 0;
-
-        for (const item of validRecipes) {
-          const normalized: Recipe = {
-            ...item,
-            category: item.category || '家常中餐',
-            ownerId:
-              currentUser && (!item.ownerId || item.ownerId === 'guest')
-                ? currentUser.uid
-                : item.ownerId || targetOwnerId,
-            authorName: item.authorName || targetAuthorName,
-            createdAt: item.createdAt || today,
-            updatedAt: item.updatedAt || today,
-          };
-
-          if (masterMap.has(normalized.id)) {
-            masterMap.set(normalized.id, normalized);
-            updatedCount++;
-          } else {
-            masterMap.set(normalized.id, normalized);
-            addedCount++;
-          }
-        }
-
-        const mergedMasterList = Array.from(masterMap.values());
-        // 统一通过 saveAllMasterRecipes 写入 'food_journal_master_recipes_v2'
-        const persisted = saveAllMasterRecipes(mergedMasterList);
         const refreshedUserRecipes = getUserRecipes(currentUser);
         onReloadRecipes(refreshedUserRecipes);
         refreshStorageMetrics();
 
-        if (!persisted) {
+        if (!res.persisted) {
           showBanner(
             'error',
             `写入主存储 (${BACKUP_STORAGE_KEY}) 失败：超出浏览器 localStorage 容量上限，请清理超大图文后重试。`
           );
+        } else if (res.addedRecipes === 0 && res.updatedRecipes === 0) {
+          showBanner(
+            'error',
+            `Schema v${res.detectedVersion} 校验完成，但未找到可导入的有效食谱（跳过无效项 ${res.skippedRecipes} 条）。`
+          );
         } else {
+          const extras: string[] = [];
+          if (res.remappedOwnerCount > 0) {
+            extras.push(`跨设备归属重映射 ${res.remappedOwnerCount} 道至当前账号`);
+          }
+          if (res.restoredLogs > 0) {
+            extras.push(`恢复日历打卡 ${res.restoredLogs} 条`);
+          }
+          if (res.restoredMediaCount > 0) {
+            extras.push(`还原离线视频 ${res.restoredMediaCount} 段`);
+          }
+          if (res.skippedRecipes > 0) {
+            extras.push(`拦截异常记录 ${res.skippedRecipes} 条`);
+          }
           showBanner(
             'success',
-            `Schema v${detectedVersion} 校验通过并已写入主库 (${BACKUP_STORAGE_KEY})：新增 ${addedCount} 道、合并更新 ${updatedCount} 道食谱${
-              skippedCount > 0 ? `（自动拦截无效数据 ${skippedCount} 条）` : ''
+            `Schema v${res.detectedVersion} 全量还原成功：新增 ${res.addedRecipes} 道、合并更新 ${res.updatedRecipes} 道食谱${
+              extras.length > 0 ? `（${extras.join(' · ')}）` : ''
             }。`
           );
         }
@@ -311,10 +167,15 @@ export const BackupView: React.FC<BackupViewProps> = ({
             : '解析 JSON 备份文件失败，请确认文件完整有效。'
         );
       } finally {
+        setIsImporting(false);
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
         }
       }
+    };
+    reader.onerror = () => {
+      setIsImporting(false);
+      showBanner('error', '读取本地备份文件失败。');
     };
     reader.readAsText(file);
   };
@@ -349,14 +210,14 @@ export const BackupView: React.FC<BackupViewProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-2xl sm:text-3xl font-bold font-journal-title text-[#2C2723] flex items-center gap-2">
             <Database className="w-6 h-6 text-[#C85A32]" />
-            <span>手帐数据安全、Schema 校验备份与迁移</span>
+            <span>全量手帐数据备份、跨设备迁移与恢复</span>
           </h1>
           <span className="text-[11px] font-mono text-[#7A7268] bg-[#FAF7F2] border border-[#EADBCE] px-2.5 py-1 rounded-md">
             Master Key: {BACKUP_STORAGE_KEY} · Schema v{CURRENT_BACKUP_VERSION}
           </span>
         </div>
         <p className="text-xs text-[#7A7268] mt-1.5">
-          所有导入导出均统一读写主数据存储库（<code className="font-mono text-[#5A5248]">{BACKUP_STORAGE_KEY}</code>），支持带版本号的 JSON Schema 结构校验与按 ID 无损合并。
+          全量覆盖食谱主库（<code className="font-mono text-[#5A5248]">{BACKUP_STORAGE_KEY}</code>）、烹饪日历打卡、自定义分类、生鲜采购清单、广场收藏、厨神大赛作品、成长等级及 IndexedDB 离线视频包；跨设备导入自动重映射账号归属。
         </p>
       </div>
 
@@ -392,7 +253,6 @@ export const BackupView: React.FC<BackupViewProps> = ({
 
       {/* Top Banner: App Installation & GitHub Data Sync */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {/* PWA App Banner */}
         <div className="bg-white border border-[#EADBCE] rounded-xl p-5 paper-shadow flex items-start gap-4">
           <div className="w-12 h-12 rounded-xl bg-[#FAF7F2] border border-[#EADBCE] text-[#C85A32] flex items-center justify-center shrink-0">
             <Smartphone className="w-6 h-6" />
@@ -402,7 +262,7 @@ export const BackupView: React.FC<BackupViewProps> = ({
               安装为手机/桌面独立 App
             </h3>
             <p className="text-xs text-[#7A7268] leading-relaxed">
-              支持添加到 iOS / Android 主屏幕，离线断网亦可全屏翻阅。
+              支持添加到 iOS / Android 主屏幕，内置图文离线缓存，断网亦可全屏翻阅。
             </p>
             <div className="pt-2">
               <button
@@ -416,7 +276,6 @@ export const BackupView: React.FC<BackupViewProps> = ({
           </div>
         </div>
 
-        {/* GitHub JSON Snapshot Sync Banner */}
         <div className="bg-white border border-[#EADBCE] rounded-xl p-5 paper-shadow flex items-start gap-4">
           <div className="w-12 h-12 rounded-xl bg-[#2C2723] text-white flex items-center justify-center shrink-0">
             <GitBranch className="w-6 h-6" />
@@ -461,7 +320,7 @@ export const BackupView: React.FC<BackupViewProps> = ({
               本机存储健康度监测
             </h3>
             <p className="text-xs text-[#7A7268] leading-relaxed mb-3">
-              主菜谱库与实拍缩略图存于 localStorage，高清视频独立存于 IndexedDB 大容量库。
+              主菜谱与个人偏好存于 localStorage，实拍高清视频独立存于 IndexedDB 大容量库。
             </p>
           </div>
 
@@ -501,41 +360,64 @@ export const BackupView: React.FC<BackupViewProps> = ({
           </div>
         </div>
 
-        {/* Card 2: Export Versioned JSON Card */}
+        {/* Card 2: Export Full Bundle Card */}
         <div className="bg-white border border-[#EADBCE] rounded-xl p-5 paper-shadow flex flex-col justify-between">
           <div>
             <div className="w-10 h-10 rounded-lg bg-[#FAF7F2] border border-[#EADBCE] text-[#C08A3E] flex items-center justify-center mb-3">
               <Database className="w-5 h-5" />
             </div>
             <h3 className="text-sm font-bold text-[#2C2723] font-journal-title mb-1.5">
-              导出 v{CURRENT_BACKUP_VERSION} 备份 JSON
+              导出 v{CURRENT_BACKUP_VERSION} 全量备份包
             </h3>
-            <p className="text-xs text-[#7A7268] leading-relaxed mb-4">
-              将当前手帐中的所有食谱、步骤、实拍图及版本号（<code className="font-mono">version: "{CURRENT_BACKUP_VERSION}"</code>）打包导出。
+            <p className="text-xs text-[#7A7268] leading-relaxed mb-3">
+              打包食谱、烹饪日历、分类、采购偏好、收藏、成就及可选离线视频包。
             </p>
+            <label className="flex items-start gap-2 text-[11px] text-[#5A5248] mb-3 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={includeMediaBlobs}
+                onChange={(e) => setIncludeMediaBlobs(e.target.checked)}
+                className="mt-0.5 accent-[#C85A32] rounded"
+              />
+              <span>包含 IndexedDB 离线视频包（跨设备完整还原）</span>
+            </label>
           </div>
           <button
             type="button"
+            disabled={isExporting}
             onClick={handleExport}
-            className="w-full py-2 px-3 bg-[#FAF7F2] border border-[#EADBCE] hover:bg-[#F0E6DC] text-[#2C2723] rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
+            className="w-full py-2 px-3 bg-[#FAF7F2] border border-[#EADBCE] hover:bg-[#F0E6DC] disabled:opacity-60 text-[#2C2723] rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
           >
-            <Download className="w-4 h-4" />
-            <span>导出 JSON ({recipes.length}篇)</span>
+            {isExporting ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Download className="w-4 h-4" />
+            )}
+            <span>{isExporting ? '正在打包全量数据...' : `导出全量 JSON (${recipes.length}篇)`}</span>
           </button>
         </div>
 
-        {/* Card 3: Import & Schema Validate Card */}
+        {/* Card 3: Import & Cross-Device Account Remap Card */}
         <div className="bg-white border border-[#EADBCE] rounded-xl p-5 paper-shadow flex flex-col justify-between">
           <div>
             <div className="w-10 h-10 rounded-lg bg-[#FAF7F2] border border-[#EADBCE] text-[#5F7A4D] flex items-center justify-center mb-3">
               <Upload className="w-5 h-5" />
             </div>
             <h3 className="text-sm font-bold text-[#2C2723] font-journal-title mb-1.5">
-              Schema 校验并导入手帐
+              跨设备校验并还原手帐
             </h3>
-            <p className="text-xs text-[#7A7268] leading-relaxed mb-4">
-              自动校验备份版本号（<code className="font-mono">version: "{CURRENT_BACKUP_VERSION}"</code>）与食谱字段完整性，兼容旧版数组并按 ID 合并至主存储库。
+            <p className="text-xs text-[#7A7268] leading-relaxed mb-3">
+              自动校验版本号与字段结构，恢复全部个人记录及视频库。
             </p>
+            <label className="flex items-start gap-2 text-[11px] text-[#5A5248] mb-3 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={remapToCurrentAccount}
+                onChange={(e) => setRemapToCurrentAccount(e.target.checked)}
+                className="mt-0.5 accent-[#5F7A4D] rounded"
+              />
+              <span>归属到当前账号（解决换新设备登录后看不见旧食谱）</span>
+            </label>
           </div>
           <div>
             <input
@@ -547,11 +429,16 @@ export const BackupView: React.FC<BackupViewProps> = ({
             />
             <button
               type="button"
+              disabled={isImporting}
               onClick={() => fileInputRef.current?.click()}
-              className="w-full py-2 px-3 bg-white border border-[#EADBCE] hover:bg-[#FAF7F2] text-[#2C2723] rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
+              className="w-full py-2 px-3 bg-white border border-[#EADBCE] hover:bg-[#FAF7F2] disabled:opacity-60 text-[#2C2723] rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
             >
-              <Upload className="w-4 h-4 text-[#5F7A4D]" />
-              <span>选择 JSON 文件导入</span>
+              {isImporting ? (
+                <Loader2 className="w-4 h-4 animate-spin text-[#5F7A4D]" />
+              ) : (
+                <Upload className="w-4 h-4 text-[#5F7A4D]" />
+              )}
+              <span>{isImporting ? '正在还原数据...' : '选择 JSON 文件导入'}</span>
             </button>
           </div>
         </div>
@@ -604,7 +491,7 @@ export const BackupView: React.FC<BackupViewProps> = ({
       <div className="bg-[#FAF7F2] border border-[#EADBCE] rounded-xl p-4 flex items-center gap-3 text-xs text-[#7A7268]">
         <ShieldCheck className="w-5 h-5 text-[#5F7A4D] shrink-0" />
         <p>
-          主存储库已统一锁定至 <code className="font-mono text-[#5A5248]">{BACKUP_STORAGE_KEY}</code>，彻底告别旧版存储键回退问题；导入时自动拦截残缺 JSON 与不兼容版本。
+          主存储库统一锁定至 <code className="font-mono text-[#5A5248]">{BACKUP_STORAGE_KEY}</code>；开启「归属到当前账号」后，从旧手机或旧浏览器导出的备份在新账号下导入即可 100% 立即显示。
         </p>
       </div>
     </div>

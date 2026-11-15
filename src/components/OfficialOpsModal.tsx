@@ -14,7 +14,11 @@ import {
   isAutoMenuRotationEnabled,
   setAutoMenuRotationEnabled
 } from '../utils/seasonalMenuRotation';
-import { loginAsOfficialEditorial, logoutUser } from '../utils/authService';
+import {
+  loginAsOfficialEditorial,
+  logoutUser,
+  verifyOfficialOperatorSession
+} from '../utils/authService';
 import { formatLocalDate } from '../utils/dateUtils';
 import {
   UGCReportItem,
@@ -65,8 +69,11 @@ export const OfficialOpsModal: React.FC<OfficialOpsModalProps> = ({
   const { language } = useI18n();
   const [activeTab, setActiveTab] = useState<'editorial' | 'menus' | 'moderation'>('editorial');
 
-  // Operator switch state
-  const [passcode, setPasscode] = useState('Official2026!');
+  // Operator switch state (never prefilled; verified strictly via server OFFICIAL_OPERATOR_SECRET)
+  const [passcode, setPasscode] = useState('');
+  const [isVerifyingOperator, setIsVerifyingOperator] = useState(false);
+  const [serverConfigured, setServerConfigured] = useState<boolean | null>(null);
+  const [serverSessionValid, setServerSessionValid] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [feedbackBanner, setFeedbackBanner] = useState<string | null>(null);
 
@@ -93,7 +100,24 @@ export const OfficialOpsModal: React.FC<OfficialOpsModalProps> = ({
     setMenus(getOfficialCuratedMenus());
     setReports(getReportedItems());
     setBlockedIds(getBlockedUserIds());
-  }, [isOpen]);
+
+    verifyOfficialOperatorSession().then(({ authenticated, configured }) => {
+      setServerConfigured(configured);
+      setServerSessionValid(authenticated);
+      if (currentUser?.uid === OFFICIAL_ACCOUNT_UID && !authenticated) {
+        logoutUser();
+      }
+    });
+  }, [isOpen, currentUser?.uid]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, onClose]);
 
   useEffect(() => {
     const syncMod = () => {
@@ -106,7 +130,7 @@ export const OfficialOpsModal: React.FC<OfficialOpsModalProps> = ({
 
   if (!isOpen) return null;
 
-  const isOfficialLoggedIn = currentUser?.uid === OFFICIAL_ACCOUNT_UID;
+  const isOfficialLoggedIn = currentUser?.uid === OFFICIAL_ACCOUNT_UID && serverSessionValid;
   const officialRecipes = publicRecipes.filter((r) => r.ownerId === OFFICIAL_ACCOUNT_UID);
   const officialTotalLikes = officialRecipes.reduce((acc, r) => acc + (r.likesCount || 0), 0);
   const pendingReportsCount = reports.filter((r) => !r.status || r.status === 'pending').length;
@@ -118,23 +142,42 @@ export const OfficialOpsModal: React.FC<OfficialOpsModalProps> = ({
     setTimeout(() => setFeedbackBanner(null), 3200);
   };
 
-  const handleSwitchOfficial = (e: React.FormEvent) => {
+  const requireOperatorAuth = (): boolean => {
+    if (!isOfficialLoggedIn) {
+      setActiveTab('editorial');
+      setAuthError(
+        language === 'zh-CN'
+          ? '此项操作需要通过服务端验证的「官方主厨」权限，请先输入服务端运营口令解锁。'
+          : 'Server-verified Official Operator authentication is required for this action.'
+      );
+      return false;
+    }
+    return true;
+  };
+
+  const handleSwitchOfficial = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
+    setIsVerifyingOperator(true);
     try {
-      const officialUser = loginAsOfficialEditorial(passcode);
+      const officialUser = await loginAsOfficialEditorial(passcode);
+      setServerSessionValid(true);
+      setPasscode('');
       onSwitchToOfficialSuccess(officialUser);
       showToast(
         language === 'zh-CN'
-          ? '已切换至「食味手记官方主厨」运营身份！现在发布或评论均带有官方标识。'
-          : 'Switched to Official Editorial Chef account.'
+          ? '已通过服务端鉴权切换至「食味手记官方主厨」运营身份！'
+          : 'Authenticated via server as Official Editorial Chef.'
       );
-    } catch (err: any) {
-      setAuthError(err?.message || '口令验证失败');
+    } catch (err: unknown) {
+      setAuthError(err instanceof Error ? err.message : '口令验证失败');
+    } finally {
+      setIsVerifyingOperator(false);
     }
   };
 
   const handleTogglePinMenu = (menuId: string) => {
+    if (!requireOperatorAuth()) return;
     const updated = menus.map((m) => (m.id === menuId ? { ...m, pinned: !m.pinned } : m));
     setMenus(updated);
     saveOfficialCuratedMenus(updated);
@@ -142,6 +185,7 @@ export const OfficialOpsModal: React.FC<OfficialOpsModalProps> = ({
   };
 
   const handleDeleteMenu = (menuId: string) => {
+    if (!requireOperatorAuth()) return;
     const updated = menus.filter((m) => m.id !== menuId);
     setMenus(updated);
     saveOfficialCuratedMenus(updated);
@@ -151,6 +195,7 @@ export const OfficialOpsModal: React.FC<OfficialOpsModalProps> = ({
 
   const handleCreateMenuSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!requireOperatorAuth()) return;
     if (!newMenuTitle.trim() || selectedRecipeIds.length === 0) {
       showToast(language === 'zh-CN' ? '请填写菜单标题并至少勾选 1 道食谱' : 'Enter title and select at least 1 recipe');
       return;
@@ -216,8 +261,17 @@ export const OfficialOpsModal: React.FC<OfficialOpsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-3 sm:p-6 overflow-y-auto">
-      <div className="bg-[#FAF7F2] border border-[#EADBCE] rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col paper-shadow overflow-hidden">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={language === 'zh-CN' ? '官方账号运营与内容安全监管工作台' : 'Official Editorial & UGC Safety Console'}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-3 sm:p-6 overflow-y-auto"
+      onClick={onClose}
+    >
+      <div
+        className="bg-[#FAF7F2] border border-[#EADBCE] rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col paper-shadow overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="px-5 py-4 bg-white border-b border-[#EADBCE] flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
@@ -358,6 +412,7 @@ export const OfficialOpsModal: React.FC<OfficialOpsModalProps> = ({
                       type="button"
                       onClick={() => {
                         logoutUser();
+                        setServerSessionValid(false);
                         showToast('已退出官方主厨身份，切回普通访客视图');
                       }}
                       className="px-3.5 py-2 rounded-lg border border-[#EADBCE] text-xs font-semibold text-[#7A7268] hover:text-[#2C2723] hover:bg-[#FAF7F2] inline-flex items-center gap-1.5 shrink-0"
@@ -371,8 +426,8 @@ export const OfficialOpsModal: React.FC<OfficialOpsModalProps> = ({
                 {isOfficialLoggedIn ? (
                   <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-[#FAF7F2] p-4 rounded-xl border border-[#EADBCE]">
                     <div className="text-xs text-[#2C2723] leading-relaxed">
-                      <strong>当前已处于「食味手记官方主厨」运营状态：</strong>
-                      您现在新建菜谱（勾选公开到广场）、在食味广场给厨友点赞点评，均会以官方主厨身份展示。
+                      <strong>当前已处于服务端验证的「食味手记官方主厨」运营状态：</strong>
+                      您现在新建菜谱（勾选公开到广场）、编排精选菜单或处置社区举报，均已获授权。
                     </div>
                     <button
                       type="button"
@@ -389,29 +444,35 @@ export const OfficialOpsModal: React.FC<OfficialOpsModalProps> = ({
                 ) : (
                   <form onSubmit={handleSwitchOfficial} className="space-y-3">
                     <label className="block text-xs font-semibold text-[#2C2723]">
-                      输入官方主理人运营口令，一键切换为「食味手记官方主厨」发帖与回复评论：
+                      输入服务端环境变量（<code className="font-mono">OFFICIAL_OPERATOR_SECRET</code>）配置的运营口令解锁管理权限：
                     </label>
                     <div className="flex flex-col sm:flex-row gap-2.5">
                       <div className="relative flex-1">
                         <Lock className="w-3.5 h-3.5 text-[#9A9085] absolute left-3 top-1/2 -translate-y-1/2" />
                         <input
                           type="password"
+                          autoComplete="off"
                           value={passcode}
                           onChange={(e) => setPasscode(e.target.value)}
-                          placeholder="输入运营口令 (默认 Official2026! 或 8888)"
+                          placeholder={
+                            serverConfigured === false
+                              ? '服务端尚未配置 OFFICIAL_OPERATOR_SECRET（当前为只读预览态）'
+                              : '请输入服务端运营口令'
+                          }
                           className="w-full pl-9 pr-3 py-2 text-xs bg-[#FAF7F2] border border-[#EADBCE] rounded-lg focus:outline-hidden focus:border-[#C85A32]"
                         />
                       </div>
                       <button
                         type="submit"
-                        className="px-4 py-2 bg-[#2C2723] hover:bg-[#C85A32] text-white text-xs font-semibold rounded-lg transition-colors shrink-0"
+                        disabled={isVerifyingOperator || serverConfigured === false}
+                        className="px-4 py-2 bg-[#2C2723] hover:bg-[#C85A32] disabled:opacity-50 text-white text-xs font-semibold rounded-lg transition-colors shrink-0"
                       >
-                        切换至官方主厨身份
+                        {isVerifyingOperator ? '服务端核验中...' : '验证并切换至官方身份'}
                       </button>
                     </div>
                     {authError && <p className="text-xs text-rose-600">{authError}</p>}
                     <p className="text-[11px] text-[#7A7268]">
-                      提示：您也可以在普通登录弹窗使用账号 <code className="font-mono text-[#2C2723]">official@culinaryjournal.app</code> 与密码 <code className="font-mono text-[#2C2723]">Official2026!</code> 登录。
+                      安全说明：前端代码不包含任何默认运营口令或隐藏管理账号；仅在服务端配置 <code className="font-mono text-[#2C2723]">OFFICIAL_OPERATOR_SECRET</code> 后方可签发临时会话令牌。未解锁时仅开放只读排期预览与本地敏感词风控沙盒测试。
                     </p>
                   </form>
                 )}
@@ -460,6 +521,7 @@ export const OfficialOpsModal: React.FC<OfficialOpsModalProps> = ({
                   <button
                     type="button"
                     onClick={() => {
+                      if (!requireOperatorAuth()) return;
                       const next = !autoRotation;
                       setAutoRotation(next);
                       setAutoMenuRotationEnabled(next);
@@ -529,7 +591,10 @@ export const OfficialOpsModal: React.FC<OfficialOpsModalProps> = ({
                 </p>
                 <button
                   type="button"
-                  onClick={() => setIsCreatingMenu(!isCreatingMenu)}
+                  onClick={() => {
+                    if (!requireOperatorAuth()) return;
+                    setIsCreatingMenu(!isCreatingMenu);
+                  }}
                   className="px-3.5 py-2 bg-[#C85A32] hover:bg-[#B34C26] text-white text-xs font-bold rounded-lg transition-colors inline-flex items-center gap-1.5 shrink-0"
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -785,6 +850,7 @@ export const OfficialOpsModal: React.FC<OfficialOpsModalProps> = ({
                               <button
                                 type="button"
                                 onClick={() => {
+                                  if (!requireOperatorAuth()) return;
                                   takedownUGCItem(rep.targetId);
                                   showToast(`已从食味广场下架《${rep.targetTitle}》`);
                                 }}
@@ -795,6 +861,7 @@ export const OfficialOpsModal: React.FC<OfficialOpsModalProps> = ({
                               <button
                                 type="button"
                                 onClick={() => {
+                                  if (!requireOperatorAuth()) return;
                                   takedownUGCItem(rep.targetId);
                                   blockUser(rep.authorId, rep.authorName);
                                   showToast(`已下架内容并封禁作者「${rep.authorName}」`);
@@ -806,6 +873,7 @@ export const OfficialOpsModal: React.FC<OfficialOpsModalProps> = ({
                               <button
                                 type="button"
                                 onClick={() => {
+                                  if (!requireOperatorAuth()) return;
                                   dismissUGCReport(idx);
                                   showToast('已标记为误报并归档');
                                 }}
@@ -827,6 +895,7 @@ export const OfficialOpsModal: React.FC<OfficialOpsModalProps> = ({
                     <button
                       type="button"
                       onClick={() => {
+                        if (!requireOperatorAuth()) return;
                         blockedIds.forEach((id) => unblockUser(id));
                         showToast('已清空拉黑屏蔽名单');
                       }}

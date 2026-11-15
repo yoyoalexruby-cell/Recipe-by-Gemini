@@ -95,7 +95,6 @@ export function addCustomCategory(
   const merged = getMergedTaxonomy(user);
 
   if (merged[trimmed]) {
-    alert(`菜谱名录「${trimmed}」已存在！`);
     return false;
   }
 
@@ -138,13 +137,11 @@ export function addCustomSubcategory(
   const merged = getMergedTaxonomy(user);
 
   if (!merged[parentCategoryId]) {
-    alert(`父级分类「${parentCategoryId}」不存在！`);
     return false;
   }
 
   const existingSubs = merged[parentCategoryId].subcategories;
   if (existingSubs.some(s => s.id === trimmedSub)) {
-    alert(`细分名录「${trimmedSub}」在「${parentCategoryId}」中已存在！`);
     return false;
   }
 

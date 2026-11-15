@@ -1,13 +1,18 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import dotenv from 'dotenv';
-import path from 'path';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+
+// Trust single upstream reverse proxy (Cloud Run / Nginx) so req.ip cannot be spoofed via raw X-Forwarded-For chains
+app.set('trust proxy', 1);
 
 // Cap JSON body payload to 12MB (supports ~8MB compressed audio clips while preventing memory exhaustion)
 app.use(express.json({ limit: '12mb' }));
@@ -18,23 +23,74 @@ const REQUEST_TIMEOUT_MS = 25_000; // 25s server timeout
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = 15; // Max 15 transcriptions per minute per IP
 
-const ipRequestTimestamps = new Map<string, number[]>();
+const ADMIN_LOGIN_WINDOW_MS = 5 * 60_000;
+const ADMIN_LOGIN_MAX_ATTEMPTS = 5;
+const OPERATOR_TOKEN_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
+const EPHEMERAL_SIGNING_KEY = crypto.randomBytes(32).toString('hex');
 
-function checkIpRateLimit(ip: string): boolean {
+const ipRequestTimestamps = new Map<string, number[]>();
+const adminAttemptTimestamps = new Map<string, number[]>();
+
+function checkWindowRateLimit(
+  bucket: Map<string, number[]>,
+  key: string,
+  windowMs: number,
+  maxRequests: number
+): boolean {
   const now = Date.now();
-  const windowStart = now - RATE_LIMIT_WINDOW_MS;
-  const recent = (ipRequestTimestamps.get(ip) || []).filter((ts) => ts > windowStart);
-  if (recent.length >= RATE_LIMIT_MAX_REQUESTS) {
-    ipRequestTimestamps.set(ip, recent);
+  const windowStart = now - windowMs;
+  const recent = (bucket.get(key) || []).filter((ts) => ts > windowStart);
+  if (recent.length >= maxRequests) {
+    bucket.set(key, recent);
     return false;
   }
   recent.push(now);
-  ipRequestTimestamps.set(ip, recent);
+  bucket.set(key, recent);
   return true;
 }
 
+function getClientIp(req: express.Request): string {
+  return req.ip || req.socket.remoteAddress || 'unknown';
+}
+
+function constantTimeSecretMatch(candidate: string, expected: string): boolean {
+  const hashA = crypto.createHash('sha256').update(candidate, 'utf8').digest();
+  const hashB = crypto.createHash('sha256').update(expected, 'utf8').digest();
+  return crypto.timingSafeEqual(hashA, hashB);
+}
+
+function signOperatorToken(secret: string): string {
+  const exp = Date.now() + OPERATOR_TOKEN_TTL_MS;
+  const nonce = crypto.randomBytes(12).toString('hex');
+  const payload = `${exp}.${nonce}`;
+  const sig = crypto
+    .createHmac('sha256', `${EPHEMERAL_SIGNING_KEY}:${secret}`)
+    .update(payload)
+    .digest('hex');
+  return `${payload}.${sig}`;
+}
+
+function verifyOperatorToken(token: string, secret: string): boolean {
+  if (!token || !secret) return false;
+  const parts = token.split('.');
+  if (parts.length !== 3) return false;
+  const [expStr, nonce, sig] = parts;
+  const exp = Number(expStr);
+  if (!Number.isFinite(exp) || Date.now() > exp) return false;
+
+  const payload = `${expStr}.${nonce}`;
+  const expectedSig = crypto
+    .createHmac('sha256', `${EPHEMERAL_SIGNING_KEY}:${secret}`)
+    .update(payload)
+    .digest('hex');
+
+  return constantTimeSecretMatch(sig, expectedSig);
+}
+
 if (!process.env.GEMINI_API_KEY) {
-  console.warn('[server] GEMINI_API_KEY is not configured; /api/transcribe will return 503 so clients fall back to browser SpeechRecognition.');
+  console.warn(
+    '[server] GEMINI_API_KEY is not configured; /api/transcribe will return 503 so clients fall back to browser SpeechRecognition.'
+  );
 }
 
 // Initialize GoogleGenAI client on server
@@ -47,9 +103,76 @@ const ai = new GoogleGenAI({
   },
 });
 
-// Audio transcription endpoint using gemini-3.5-transcribe with rate limit, validation & timeout
+/**
+ * Server-side Official Operator Authentication (Replaces hardcoded frontend passcodes)
+ */
+app.post('/api/admin/login', (req, res) => {
+  const configuredSecret = (process.env.OFFICIAL_OPERATOR_SECRET || '').trim();
+  if (!configuredSecret) {
+    return res.status(403).json({
+      success: false,
+      configured: false,
+      error:
+        '服务端尚未配置 OFFICIAL_OPERATOR_SECRET 环境变量，官方运营控制台处于安全锁定状态（请在服务端环境变量中配置口令）。',
+    });
+  }
+
+  const clientIp = getClientIp(req);
+  if (!checkWindowRateLimit(adminAttemptTimestamps, clientIp, ADMIN_LOGIN_WINDOW_MS, ADMIN_LOGIN_MAX_ATTEMPTS)) {
+    return res.status(429).json({
+      success: false,
+      configured: true,
+      error: '运营口令尝试次数过多，请等待 5 分钟后再试。',
+    });
+  }
+
+  const { passcode } = (req.body || {}) as { passcode?: unknown };
+  if (typeof passcode !== 'string' || !passcode.trim()) {
+    return res.status(400).json({
+      success: false,
+      configured: true,
+      error: '请输入有效的官方运营口令。',
+    });
+  }
+
+  if (!constantTimeSecretMatch(passcode.trim(), configuredSecret)) {
+    return res.status(401).json({
+      success: false,
+      configured: true,
+      error: '官方运营口令验证未通过。',
+    });
+  }
+
+  const token = signOperatorToken(configuredSecret);
+  return res.json({
+    success: true,
+    configured: true,
+    token,
+    expiresInSeconds: OPERATOR_TOKEN_TTL_MS / 1000,
+  });
+});
+
+app.get('/api/admin/session', (req, res) => {
+  const configuredSecret = (process.env.OFFICIAL_OPERATOR_SECRET || '').trim();
+  if (!configuredSecret) {
+    return res.json({ authenticated: false, configured: false });
+  }
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+  const authenticated = verifyOperatorToken(token, configuredSecret);
+  return res.json({ authenticated, configured: true });
+});
+
+// Audio transcription endpoint using gemini-3.5-transcribe with client header check, rate limit, validation & timeout
 app.post('/api/transcribe', async (req, res) => {
   try {
+    if (req.headers['x-app-client'] !== 'culinary-journal-web') {
+      return res.status(403).json({
+        error: '拒绝未授权的外部直接调用',
+        success: false,
+      });
+    }
+
     if (!process.env.GEMINI_API_KEY) {
       return res.status(503).json({
         error: '服务端未配置语音转写密钥，已自动切换浏览器本地语音识别',
@@ -57,19 +180,15 @@ app.post('/api/transcribe', async (req, res) => {
       });
     }
 
-    const clientIp =
-      (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
-      req.socket.remoteAddress ||
-      'unknown';
-
-    if (!checkIpRateLimit(clientIp)) {
+    const clientIp = getClientIp(req);
+    if (!checkWindowRateLimit(ipRequestTimestamps, clientIp, RATE_LIMIT_WINDOW_MS, RATE_LIMIT_MAX_REQUESTS)) {
       return res.status(429).json({
         error: '语音转写请求过于频繁，请稍候一分钟再试',
         success: false,
       });
     }
 
-    const { audioData, mimeType } = req.body || {};
+    const { audioData, mimeType } = (req.body || {}) as { audioData?: unknown; mimeType?: unknown };
     if (!audioData || typeof audioData !== 'string') {
       return res.status(400).json({ error: '缺少有效的录音数据 (audioData)', success: false });
     }
@@ -115,21 +234,27 @@ app.post('/api/transcribe', async (req, res) => {
 
     const text = response.text?.trim() || '';
     return res.json({ text, success: true });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Audio transcription error:', error);
+    const errMsg = error instanceof Error ? error.message : '语音转写服务出现异常，请稍后重试';
     return res.status(500).json({
-      error: error?.message || '语音转写服务出现异常，请稍后重试',
+      error: errMsg,
       success: false,
     });
   }
 });
 
-// Start Express server with Vite middleware in dev or static in prod
+// Start Express server: serve built static assets in production (or when dist/ exists and NODE_ENV !== 'development'), Vite middleware in dev
 async function startServer() {
-  if (process.env.NODE_ENV === 'production') {
+  const distIndex = path.resolve('dist/index.html');
+  const isProduction =
+    process.env.NODE_ENV === 'production' ||
+    (process.env.NODE_ENV !== 'development' && fs.existsSync(distIndex));
+
+  if (isProduction && fs.existsSync(distIndex)) {
     app.use(express.static(path.resolve('dist')));
     app.get('*', (_req, res) => {
-      res.sendFile(path.resolve('dist/index.html'));
+      res.sendFile(distIndex);
     });
   } else {
     const vite = await createViteServer({
@@ -140,7 +265,7 @@ async function startServer() {
       appType: 'spa',
     });
 
-    // Intercept /@vite/client to completely prevent WebSocket connection attempts and errors in cloud sandbox
+    // Intercept /@vite/client to prevent WebSocket connection attempts and errors in cloud sandbox
     app.get('/@vite/client', async (_req, res, next) => {
       try {
         const result = await vite.transformRequest('/@vite/client');
@@ -172,7 +297,9 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Food Journal server running on http://0.0.0.0:${PORT}`);
+    console.log(
+      `Culinary Journal server running on http://0.0.0.0:${PORT} (${isProduction ? 'production' : 'development'})`
+    );
   });
 }
 

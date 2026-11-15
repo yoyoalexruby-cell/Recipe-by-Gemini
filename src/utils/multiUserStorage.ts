@@ -6,6 +6,7 @@ import { DEMO_COMMUNITY_USERS } from './authService';
 import { getTakenDownItemIds } from './ugcModeration';
 import { AVATAR_SVG_MAP } from './avatarGraphics';
 import { formatLocalDate } from './dateUtils';
+import { collectRecipeMediaUris, deleteMultipleMediaFromIDB } from './mediaStorage';
 
 export const MASTER_RECIPES_KEY = 'food_journal_master_recipes_v2';
 const DELETED_SEED_IDS_KEY = 'food_journal_deleted_seed_ids_v1';
@@ -223,9 +224,12 @@ export function getRecipeById(id: string): Recipe | undefined {
 }
 
 /**
- * Save / Update a recipe for a user
+ * Save / Update a recipe for a user and report whether localStorage persistence succeeded
  */
-export function saveUserRecipe(recipe: Recipe, currentUser: UserProfile | null): Recipe {
+export function saveUserRecipeWithStatus(
+  recipe: Recipe,
+  currentUser: UserProfile | null
+): { recipe: Recipe; persisted: boolean } {
   const all = getAllMasterRecipes();
   const ownerId = currentUser ? currentUser.uid : 'guest';
   const authorName = currentUser ? currentUser.displayName : '匿名大厨';
@@ -259,17 +263,25 @@ export function saveUserRecipe(recipe: Recipe, currentUser: UserProfile | null):
     updatedList = [enrichedRecipe, ...all];
   }
 
-  saveAllMasterRecipes(updatedList);
-  return enrichedRecipe;
+  const persisted = saveAllMasterRecipes(updatedList);
+  return { recipe: enrichedRecipe, persisted };
 }
 
 /**
- * Delete a recipe (records seed IDs in deletedSeedIds so initial presets never resurrect)
+ * Save / Update a recipe for a user
+ */
+export function saveUserRecipe(recipe: Recipe, currentUser: UserProfile | null): Recipe {
+  return saveUserRecipeWithStatus(recipe, currentUser).recipe;
+}
+
+/**
+ * Delete a recipe (records seed IDs in deletedSeedIds and cleans orphaned IndexedDB media)
  */
 export function deleteUserRecipe(id: string, currentUser: UserProfile | null): void {
   const all = getAllMasterRecipes();
   const seededIds = new Set(createInitialSeededRecipes().map((s) => s.id));
   let didDelete = false;
+  const deletedRecipes: Recipe[] = [];
 
   const filtered = all.filter((r) => {
     if (r.id !== id) return true;
@@ -277,6 +289,7 @@ export function deleteUserRecipe(id: string, currentUser: UserProfile | null): v
       return true; // Cannot delete another account's recipe
     }
     didDelete = true;
+    deletedRecipes.push(r);
     return false;
   });
 
@@ -287,6 +300,17 @@ export function deleteUserRecipe(id: string, currentUser: UserProfile | null): v
   }
 
   saveAllMasterRecipes(filtered);
+
+  if (deletedRecipes.length > 0) {
+    const candidateUris = collectRecipeMediaUris(deletedRecipes);
+    if (candidateUris.length > 0) {
+      const stillReferenced = new Set(collectRecipeMediaUris(filtered));
+      const orphanedUris = candidateUris.filter((u) => !stillReferenced.has(u));
+      if (orphanedUris.length > 0) {
+        deleteMultipleMediaFromIDB(orphanedUris).catch(() => {});
+      }
+    }
+  }
 }
 
 /**

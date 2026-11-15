@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UserProfile } from '../types/auth';
 import {
   loginWithPassword,
@@ -43,6 +43,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const completeLogin = (user: UserProfile) => {
@@ -63,7 +72,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
-  const handlePasswordSubmit = (e: React.FormEvent) => {
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
@@ -86,10 +95,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               : 'Please enter a username and a password of at least 6 characters'
           );
         }
-        const user = registerWithPassword(username, password, email);
+        const user = await registerWithPassword(username, password, email);
         completeLogin(user);
       } else {
-        const user = loginWithPassword(username, password);
+        const user = await loginWithPassword(username, password);
         completeLogin(user);
       }
     } catch (err) {
@@ -106,6 +115,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={isZh ? '登录或注册食味手记账号' : 'Sign In or Create Account'}
       className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-xs overflow-y-auto"
       onClick={onClose}
     >
@@ -314,8 +326,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           <ShieldCheck className="w-3.5 h-3.5 text-[#5F7A4D] shrink-0" />
           <span>
             {isZh
-              ? '本地优先加密隔离 · 支持随时导出备份或一键注销账号'
-              : 'Local-first storage · Export or delete account anytime'}
+              ? '本机离线优先 · 本地多账号视图隔离 · 支持全量导出或一键注销'
+              : 'Local-first offline storage · Multi-profile view isolation · Export or delete anytime'}
           </span>
         </div>
       </div>

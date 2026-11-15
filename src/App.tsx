@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, Suspense, lazy } from 'react';
 import { Recipe } from './types/recipe';
 import { UserProfile } from './types/auth';
 import { getCurrentUser, deleteCurrentUserAccount, CURRENT_USER_KEY } from './utils/authService';
@@ -6,45 +6,81 @@ import {
   MASTER_RECIPES_KEY,
   getUserRecipes, 
   getPublicSquareRecipes, 
-  saveUserRecipe, 
+  saveUserRecipeWithStatus, 
   deleteUserRecipe, 
   cloneRecipeToMyJournal, 
   cloneMenuToMyJournal,
   toggleLikeRecipe, 
   addCommentToRecipe, 
-  getRecipeById,
-  purgeAllUserOwnedData
+  getRecipeById
 } from './utils/multiUserStorage';
-import { formatLocalDate } from './utils/dateUtils';
+import { downloadFullBackupJson, purgeAllUserDataCompletely } from './utils/fullBackupService';
 import { auditUGCContentSafety } from './utils/ugcModeration';
 import { getGitHubConfig, saveGitHubConfig, syncRecipesToGitHub, GitHubConfig } from './utils/githubSync';
 import { Header } from './components/Header';
 import { RecipeCard } from './components/RecipeCard';
-import { RecipeDetail } from './components/RecipeDetail';
-import { RecipeEditor } from './components/RecipeEditor';
-import { CookingExecutionView } from './components/CookingExecutionView';
-import { CookingNotesView } from './components/CookingNotesView';
-import { ShareCardModal } from './components/ShareCardModal';
-import { BackupView } from './components/BackupView';
 import { KitchenTimer } from './components/KitchenTimer';
 import { PWAInstallModal } from './components/PWAInstallModal';
 import { GitHubSyncModal } from './components/GitHubSyncModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
-import { CulinarySquareView } from './components/CulinarySquareView';
-import { MasterChefContestView } from './components/MasterChefContestView';
-import { SharedRecipePage } from './components/SharedRecipePage';
 import { AuthModal } from './components/AuthModal';
-import { UserProfileModal } from './components/UserProfileModal';
-import { CalendarJournalView } from './components/CalendarJournalView';
 import { CategoryManagerModal } from './components/CategoryManagerModal';
-import { ComplianceModal } from './components/ComplianceModal';
-import { MultiPlatformGuideModal } from './components/MultiPlatformGuideModal';
-import { AppShareModal } from './components/AppShareModal';
 import { FooterCompliance } from './components/FooterCompliance';
-import { PublicLegalSupportPage, PublicPageSection } from './components/PublicLegalSupportPage';
-import { AppStoreAssetsModal } from './components/AppStoreAssetsModal';
-import { OfficialOpsModal } from './components/OfficialOpsModal';
+import type { PublicPageSection } from './components/PublicLegalSupportPage';
 import { FuzzySearchBar } from './components/FuzzySearchBar';
+
+// Lazy-loaded feature views & heavy modals for fast initial paint
+const RecipeDetail = lazy(() =>
+  import('./components/RecipeDetail').then((m) => ({ default: m.RecipeDetail }))
+);
+const RecipeEditor = lazy(() =>
+  import('./components/RecipeEditor').then((m) => ({ default: m.RecipeEditor }))
+);
+const CookingExecutionView = lazy(() =>
+  import('./components/CookingExecutionView').then((m) => ({ default: m.CookingExecutionView }))
+);
+const CookingNotesView = lazy(() =>
+  import('./components/CookingNotesView').then((m) => ({ default: m.CookingNotesView }))
+);
+const ShareCardModal = lazy(() =>
+  import('./components/ShareCardModal').then((m) => ({ default: m.ShareCardModal }))
+);
+const BackupView = lazy(() =>
+  import('./components/BackupView').then((m) => ({ default: m.BackupView }))
+);
+const CulinarySquareView = lazy(() =>
+  import('./components/CulinarySquareView').then((m) => ({ default: m.CulinarySquareView }))
+);
+const MasterChefContestView = lazy(() =>
+  import('./components/MasterChefContestView').then((m) => ({ default: m.MasterChefContestView }))
+);
+const SharedRecipePage = lazy(() =>
+  import('./components/SharedRecipePage').then((m) => ({ default: m.SharedRecipePage }))
+);
+const UserProfileModal = lazy(() =>
+  import('./components/UserProfileModal').then((m) => ({ default: m.UserProfileModal }))
+);
+const CalendarJournalView = lazy(() =>
+  import('./components/CalendarJournalView').then((m) => ({ default: m.CalendarJournalView }))
+);
+const ComplianceModal = lazy(() =>
+  import('./components/ComplianceModal').then((m) => ({ default: m.ComplianceModal }))
+);
+const MultiPlatformGuideModal = lazy(() =>
+  import('./components/MultiPlatformGuideModal').then((m) => ({ default: m.MultiPlatformGuideModal }))
+);
+const PublicLegalSupportPage = lazy(() =>
+  import('./components/PublicLegalSupportPage').then((m) => ({ default: m.PublicLegalSupportPage }))
+);
+const AppStoreAssetsModal = lazy(() =>
+  import('./components/AppStoreAssetsModal').then((m) => ({ default: m.AppStoreAssetsModal }))
+);
+const OfficialOpsModal = lazy(() =>
+  import('./components/OfficialOpsModal').then((m) => ({ default: m.OfficialOpsModal }))
+);
+const AppShareModal = lazy(() =>
+  import('./components/AppShareModal').then((m) => ({ default: m.AppShareModal }))
+);
 import { fuzzyFilterRecipes } from './utils/fuzzySearch';
 import { getMergedTaxonomy } from './utils/taxonomyStorage';
 import { 
@@ -222,6 +258,38 @@ export default function App() {
     };
   }, [currentUser]);
 
+  // Global Escape key handler to close topmost active modal for keyboard accessibility
+  useEffect(() => {
+    const handleGlobalEscape = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (isAppShareModalOpen) setIsAppShareModalOpen(false);
+      else if (isOfficialOpsModalOpen) setIsOfficialOpsModalOpen(false);
+      else if (isStoreAssetsModalOpen) setIsStoreAssetsModalOpen(false);
+      else if (isMultiPlatformModalOpen) setIsMultiPlatformModalOpen(false);
+      else if (isComplianceModalOpen) setIsComplianceModalOpen(false);
+      else if (isCategoryManagerOpen) setIsCategoryManagerOpen(false);
+      else if (isProfileModalOpen) setIsProfileModalOpen(false);
+      else if (isAuthModalOpen) setIsAuthModalOpen(false);
+      else if (isGitHubModalOpen) setIsGitHubModalOpen(false);
+      else if (isInstallModalOpen) setIsInstallModalOpen(false);
+      else if (sharingRecipe) setSharingRecipe(null);
+    };
+    window.addEventListener('keydown', handleGlobalEscape);
+    return () => window.removeEventListener('keydown', handleGlobalEscape);
+  }, [
+    isAppShareModalOpen,
+    isOfficialOpsModalOpen,
+    isStoreAssetsModalOpen,
+    isMultiPlatformModalOpen,
+    isComplianceModalOpen,
+    isCategoryManagerOpen,
+    isProfileModalOpen,
+    isAuthModalOpen,
+    isGitHubModalOpen,
+    isInstallModalOpen,
+    sharingRecipe,
+  ]);
+
   // Debounced auto-sync to GitHub (3s debounce, merges full master snapshot safely)
   useEffect(() => {
     if (isFirstRender.current) {
@@ -250,8 +318,8 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [recipes, githubConfig.autoSync, githubConfig.token, githubConfig.owner, githubConfig.repo, githubConfig.branch]);
 
-  // Handle Save Recipe (with Apple Guideline 1.2 pre-publish UGC content safety & food hazard filter)
-  const handleSaveRecipe = (recipe: Recipe) => {
+  // Handle Save Recipe (with Apple Guideline 1.2 UGC safety filter + localStorage quota persistence verification)
+  const handleSaveRecipe = (recipe: Recipe): boolean => {
     let recipeToSave = recipe;
     let blockedReason: string | null = null;
 
@@ -273,7 +341,17 @@ export default function App() {
       }
     }
 
-    const saved = saveUserRecipe(recipeToSave, currentUser);
+    const { recipe: saved, persisted } = saveUserRecipeWithStatus(recipeToSave, currentUser);
+    if (!persisted) {
+      setSyncToast(
+        language === 'zh-CN'
+          ? '保存失败：浏览器本地文本空间 (localStorage) 已满！草稿未关闭，请先移除超大图文或导出备份。'
+          : 'Save failed: localStorage quota exceeded! Your draft remains open—please export backup or trim large photos.'
+      );
+      setTimeout(() => setSyncToast(null), 6500);
+      return false;
+    }
+
     setRecipes(getUserRecipes(currentUser));
     setPublicRecipes(getPublicSquareRecipes());
     setIsEditorOpen(false);
@@ -289,6 +367,7 @@ export default function App() {
       setSyncToast(`菜谱《${saved.title}》已保存${saved.isPublic ? '并公开至食味广场' : '至私密手帐'}`);
       setTimeout(() => setSyncToast(null), 3000);
     }
+    return true;
   };
 
   // Handle Delete Recipe
@@ -307,10 +386,12 @@ export default function App() {
     const target = recipes.find((r) => r.id === id);
     if (target) {
       const updated = { ...target, isFavorite: !target.isFavorite };
-      saveUserRecipe(updated, currentUser);
-      setRecipes(getUserRecipes(currentUser));
-      if (selectedRecipe?.id === id) {
-        setSelectedRecipe(updated);
+      const { persisted } = saveUserRecipeWithStatus(updated, currentUser);
+      if (persisted) {
+        setRecipes(getUserRecipes(currentUser));
+        if (selectedRecipe?.id === id) {
+          setSelectedRecipe(updated);
+        }
       }
     }
   };
@@ -449,26 +530,18 @@ export default function App() {
   };
 
   const handleExportAllData = () => {
-    try {
-      const exportPayload = {
-        exportDate: new Date().toISOString(),
-        platform: '食味手记 Culinary Journal',
-        user: currentUser,
-        recipes: recipes,
-        publicRecipes: publicRecipes,
-        schemaVersion: '1.2.0',
-        totalRecipes: recipes.length,
-      };
-      const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `culinary-journal-export-${formatLocalDate()}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error('Export failed', err);
-    }
+    downloadFullBackupJson(currentUser, { includeMediaBlobs: true })
+      .then(({ recipeCount, mediaCount, cookingLogCount }) => {
+        setSyncToast(
+          language === 'zh-CN'
+            ? `已导出全量个人数据（${recipeCount}篇食谱、${cookingLogCount}条日历打卡、${mediaCount}段离线视频）`
+            : `Exported full personal archive (${recipeCount} recipes, ${cookingLogCount} logs, ${mediaCount} media clips)`
+        );
+        setTimeout(() => setSyncToast(null), 4000);
+      })
+      .catch((err) => {
+        console.error('Export failed', err);
+      });
   };
 
   const handleOpenLegalPage = (section: PublicPageSection) => {
@@ -490,24 +563,21 @@ export default function App() {
     }
   };
 
-  const handleDeleteAccount = () => {
+  const handleDeleteAccount = async () => {
     try {
-      if (currentUser) {
-        purgeAllUserOwnedData(currentUser.uid);
-        deleteCurrentUserAccount(currentUser);
-      } else {
-        deleteCurrentUserAccount(null);
-      }
+      const uidToPurge = currentUser?.uid || 'guest';
+      await purgeAllUserDataCompletely(uidToPurge);
+      deleteCurrentUserAccount(currentUser);
       setCurrentUser(null);
       setRecipes(getUserRecipes(null));
       setPublicRecipes(getPublicSquareRecipes());
       setSelectedRecipe(null);
       setSyncToast(
         language === 'zh-CN'
-          ? '您的账号及名下全部个人数据已永久注销清除'
-          : 'Your account and all personal data have been permanently deleted'
+          ? '您的账号及名下全部食谱、日历、分类、收藏与离线视频已彻底清除'
+          : 'Your account and all recipes, logs, categories, bookmarks, and offline videos have been purged'
       );
-      setTimeout(() => setSyncToast(null), 4000);
+      setTimeout(() => setSyncToast(null), 4500);
     } catch (e) {
       console.error('Account deletion error', e);
     }
@@ -515,13 +585,21 @@ export default function App() {
 
   if (publicLegalPage) {
     return (
-      <PublicLegalSupportPage
-        initialSection={publicLegalPage}
-        currentUser={currentUser}
-        onBackToApp={handleCloseLegalPage}
-        onExportAllData={handleExportAllData}
-        onDeleteAccount={handleDeleteAccount}
-      />
+      <Suspense
+        fallback={
+          <div className="min-h-screen bg-[#FAF7F2] flex items-center justify-center text-xs text-[#7A7268]">
+            正在加载页面...
+          </div>
+        }
+      >
+        <PublicLegalSupportPage
+          initialSection={publicLegalPage}
+          currentUser={currentUser}
+          onBackToApp={handleCloseLegalPage}
+          onExportAllData={handleExportAllData}
+          onDeleteAccount={handleDeleteAccount}
+        />
+      </Suspense>
     );
   }
 
@@ -557,7 +635,13 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1">
-        
+        <Suspense
+          fallback={
+            <div className="max-w-4xl mx-auto px-6 py-16 text-center text-xs text-[#7A7268]">
+              正在翻开手帐页...
+            </div>
+          }
+        >
         {/* VIEW 0: DEEP LINK SHARED RECIPE VIEW */}
         {sharedRecipeTarget ? (
           <SharedRecipePage
@@ -585,8 +669,10 @@ export default function App() {
             onDelete={handleDeleteRecipe}
             onShare={(rec) => setSharingRecipe(rec)}
             onUpdateRecipe={(updated) => {
-              handleSaveRecipe(updated);
-              setSelectedRecipe(updated);
+              const ok = handleSaveRecipe(updated);
+              if (ok) {
+                setSelectedRecipe(updated);
+              }
             }}
             onStartTimer={handleStartTimer}
             onStartCooking={() => {
@@ -955,6 +1041,7 @@ export default function App() {
             )}
           </>
         )}
+        </Suspense>
       </main>
 
       {/* Kitchen Offline State Indicator */}
@@ -969,27 +1056,30 @@ export default function App() {
         />
       )}
 
-      {/* Recipe Editor Modal / Drawer */}
-      {isEditorOpen && (
-        <RecipeEditor
-          initialRecipe={editingRecipe}
-          currentUser={currentUser}
-          onSave={handleSaveRecipe}
-          onCancel={() => {
-            setIsEditorOpen(false);
-            setEditingRecipe(null);
-          }}
-          onStartTimer={handleStartTimer}
-        />
-      )}
+      {/* Lazy-Loaded Modals Wrapped in Suspense */}
+      <Suspense fallback={null}>
+        {/* Recipe Editor Modal / Drawer */}
+        {isEditorOpen && (
+          <RecipeEditor
+            initialRecipe={editingRecipe}
+            currentUser={currentUser}
+            onSave={handleSaveRecipe}
+            onCancel={() => {
+              setIsEditorOpen(false);
+              setEditingRecipe(null);
+            }}
+            onStartTimer={handleStartTimer}
+          />
+        )}
 
-      {/* Share Card Modal */}
-      {sharingRecipe && (
-        <ShareCardModal
-          recipe={sharingRecipe}
-          onClose={() => setSharingRecipe(null)}
-        />
-      )}
+        {/* Share Card Modal */}
+        {sharingRecipe && (
+          <ShareCardModal
+            recipe={sharingRecipe}
+            onClose={() => setSharingRecipe(null)}
+          />
+        )}
+      </Suspense>
 
       {/* PWA App Install Modal */}
       <PWAInstallModal
@@ -1018,44 +1108,46 @@ export default function App() {
       />
 
       {/* User Profile Modal */}
-      {currentUser && (
-        <UserProfileModal
-          isOpen={isProfileModalOpen}
-          user={currentUser}
-          recipes={recipes}
-          userRecipeCount={recipes.length}
-          publicRecipeCount={publicRecipeCount}
-          totalLikesReceived={totalLikesReceived}
-          onClose={() => setIsProfileModalOpen(false)}
-          onUserUpdated={(updated) => {
-            setCurrentUser(updated);
-          }}
-          onLogout={() => {
-            setCurrentUser(null);
-            setRecipes(getUserRecipes(null));
-            setPublicRecipes(getPublicSquareRecipes());
-          }}
-          onDeleteAccount={handleDeleteAccount}
-          onExportAllData={handleExportAllData}
-          onOpenLegalPage={(sec) => handleOpenLegalPage(sec)}
-          onNavigateToContest={() => {
-            setActiveView('contest');
-            setSelectedRecipe(null);
-          }}
-          onNavigateToNewRecipe={() => {
-            setEditingRecipe(null);
-            setIsEditorOpen(true);
-          }}
-          onNavigateToCalendar={() => {
-            setActiveView('calendar');
-            setSelectedRecipe(null);
-          }}
-          onNavigateToSquare={() => {
-            setActiveView('square');
-            setSelectedRecipe(null);
-          }}
-        />
-      )}
+      <Suspense fallback={null}>
+        {currentUser && isProfileModalOpen && (
+          <UserProfileModal
+            isOpen={isProfileModalOpen}
+            user={currentUser}
+            recipes={recipes}
+            userRecipeCount={recipes.length}
+            publicRecipeCount={publicRecipeCount}
+            totalLikesReceived={totalLikesReceived}
+            onClose={() => setIsProfileModalOpen(false)}
+            onUserUpdated={(updated) => {
+              setCurrentUser(updated);
+            }}
+            onLogout={() => {
+              setCurrentUser(null);
+              setRecipes(getUserRecipes(null));
+              setPublicRecipes(getPublicSquareRecipes());
+            }}
+            onDeleteAccount={handleDeleteAccount}
+            onExportAllData={handleExportAllData}
+            onOpenLegalPage={(sec) => handleOpenLegalPage(sec)}
+            onNavigateToContest={() => {
+              setActiveView('contest');
+              setSelectedRecipe(null);
+            }}
+            onNavigateToNewRecipe={() => {
+              setEditingRecipe(null);
+              setIsEditorOpen(true);
+            }}
+            onNavigateToCalendar={() => {
+              setActiveView('calendar');
+              setSelectedRecipe(null);
+            }}
+            onNavigateToSquare={() => {
+              setActiveView('square');
+              setSelectedRecipe(null);
+            }}
+          />
+        )}
+      </Suspense>
 
       {/* Category Manager Modal */}
       <CategoryManagerModal
@@ -1075,64 +1167,76 @@ export default function App() {
         onOpenStoreAssets={() => setIsStoreAssetsModalOpen(true)}
       />
 
-      {/* Compliance Center Modal */}
-      <ComplianceModal
-        isOpen={isComplianceModalOpen}
-        initialTab={complianceTab}
-        onClose={() => setIsComplianceModalOpen(false)}
-        currentUser={currentUser}
-        onExportAllData={handleExportAllData}
-        onDeleteAccount={handleDeleteAccount}
-        onOpenLegalPage={(sec) => handleOpenLegalPage(sec)}
-      />
+      <Suspense fallback={null}>
+        {/* Compliance Center Modal */}
+        {isComplianceModalOpen && (
+          <ComplianceModal
+            isOpen={isComplianceModalOpen}
+            initialTab={complianceTab}
+            onClose={() => setIsComplianceModalOpen(false)}
+            currentUser={currentUser}
+            onExportAllData={handleExportAllData}
+            onDeleteAccount={handleDeleteAccount}
+            onOpenLegalPage={(sec) => handleOpenLegalPage(sec)}
+          />
+        )}
 
-      {/* Multi-Platform Guide Modal */}
-      <MultiPlatformGuideModal
-        isOpen={isMultiPlatformModalOpen}
-        onClose={() => setIsMultiPlatformModalOpen(false)}
-        onOpenPWAInstall={() => {
-          setIsMultiPlatformModalOpen(false);
-          setIsInstallModalOpen(true);
-        }}
-        onOpenShare={() => {
-          setIsMultiPlatformModalOpen(false);
-          setIsAppShareModalOpen(true);
-        }}
-        onOpenStoreAssets={() => setIsStoreAssetsModalOpen(true)}
-        onOpenLegalPage={(sec) => handleOpenLegalPage(sec)}
-      />
+        {/* Multi-Platform Guide Modal */}
+        {isMultiPlatformModalOpen && (
+          <MultiPlatformGuideModal
+            isOpen={isMultiPlatformModalOpen}
+            onClose={() => setIsMultiPlatformModalOpen(false)}
+            onOpenPWAInstall={() => {
+              setIsMultiPlatformModalOpen(false);
+              setIsInstallModalOpen(true);
+            }}
+            onOpenShare={() => {
+              setIsMultiPlatformModalOpen(false);
+              setIsAppShareModalOpen(true);
+            }}
+            onOpenStoreAssets={() => setIsStoreAssetsModalOpen(true)}
+            onOpenLegalPage={(sec) => handleOpenLegalPage(sec)}
+          />
+        )}
 
-      {/* App Store Icons & Official Screenshots Exporter Studio */}
-      <AppStoreAssetsModal
-        isOpen={isStoreAssetsModalOpen}
-        onClose={() => setIsStoreAssetsModalOpen(false)}
-      />
+        {/* App Store Icons & Official Screenshots Exporter Studio */}
+        {isStoreAssetsModalOpen && (
+          <AppStoreAssetsModal
+            isOpen={isStoreAssetsModalOpen}
+            onClose={() => setIsStoreAssetsModalOpen(false)}
+          />
+        )}
 
-      {/* Official Account Editorial Operations & UGC Moderation Console */}
-      <OfficialOpsModal
-        isOpen={isOfficialOpsModalOpen}
-        onClose={() => setIsOfficialOpsModalOpen(false)}
-        currentUser={currentUser}
-        publicRecipes={publicRecipes}
-        onSwitchToOfficialSuccess={(officialUser) => {
-          setCurrentUser(officialUser);
-          setRecipes(getUserRecipes(officialUser));
-          setPublicRecipes(getPublicSquareRecipes());
-        }}
-        onCreateOfficialRecipe={() => {
-          setEditingRecipe(null);
-          setIsEditorOpen(true);
-        }}
-        onMenusUpdated={() => {
-          setPublicRecipes(getPublicSquareRecipes());
-        }}
-      />
+        {/* Official Account Editorial Operations & UGC Moderation Console */}
+        {isOfficialOpsModalOpen && (
+          <OfficialOpsModal
+            isOpen={isOfficialOpsModalOpen}
+            onClose={() => setIsOfficialOpsModalOpen(false)}
+            currentUser={currentUser}
+            publicRecipes={publicRecipes}
+            onSwitchToOfficialSuccess={(officialUser) => {
+              setCurrentUser(officialUser);
+              setRecipes(getUserRecipes(officialUser));
+              setPublicRecipes(getPublicSquareRecipes());
+            }}
+            onCreateOfficialRecipe={() => {
+              setEditingRecipe(null);
+              setIsEditorOpen(true);
+            }}
+            onMenusUpdated={() => {
+              setPublicRecipes(getPublicSquareRecipes());
+            }}
+          />
+        )}
 
-      {/* App WeChat / QR Code Share & Scrapbook Poster Modal */}
-      <AppShareModal
-        isOpen={isAppShareModalOpen}
-        onClose={() => setIsAppShareModalOpen(false)}
-      />
+        {/* App WeChat / QR Code Share & Scrapbook Poster Modal */}
+        {isAppShareModalOpen && (
+          <AppShareModal
+            isOpen={isAppShareModalOpen}
+            onClose={() => setIsAppShareModalOpen(false)}
+          />
+        )}
+      </Suspense>
     </div>
   );
 }

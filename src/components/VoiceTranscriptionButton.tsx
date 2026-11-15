@@ -198,7 +198,10 @@ export const VoiceTranscriptionButton: React.FC<VoiceTranscriptionButtonProps> =
 
             const res = await fetch('/api/transcribe', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: {
+                'Content-Type': 'application/json',
+                'X-App-Client': 'culinary-journal-web',
+              },
               body: JSON.stringify({
                 audioData: base64Audio,
                 mimeType: recorder.mimeType || 'audio/webm'

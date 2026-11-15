@@ -1,16 +1,33 @@
 import { UserProfile, LoginMethod } from '../types/auth';
 import { AVATAR_SVG_MAP } from './avatarGraphics';
-import { OFFICIAL_EDITORIAL_USER } from '../data/officialSquareSeed';
+import { OFFICIAL_EDITORIAL_USER, OFFICIAL_ACCOUNT_UID } from '../data/officialSquareSeed';
 import { formatLocalDate } from './dateUtils';
 
 export const CURRENT_USER_KEY = 'food_journal_auth_user_v1';
+export const OPERATOR_TOKEN_SESSION_KEY = 'culinary_operator_token_v1';
 const REGISTERED_USERS_KEY = 'food_journal_registered_users_v1';
 const PASSWORD_PEPPER = 'culinary_journal_local_salt_v2_2026';
+const PBKDF2_ITERATIONS = 100_000;
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+function hexToBytes(hex: string): Uint8Array {
+  const clean = hex.length % 2 === 0 ? hex : `0${hex}`;
+  const out = new Uint8Array(clean.length / 2);
+  for (let i = 0; i < out.length; i++) {
+    out[i] = parseInt(clean.slice(i * 2, i * 2 + 2), 16);
+  }
+  return out;
+}
 
 /**
- * 加盐多轮不可逆口令摘要（取代明文可逆 btoa 编码，同时兼容老版本已注册账户平滑升级）
+ * Legacy synchronous hash (kept strictly for verifying/auto-upgrading previously saved local accounts)
  */
-function computeSaltedPasswordHash(password: string, accountSalt: string): string {
+function computeLegacySaltedHash(password: string, accountSalt: string): string {
   const normalizedSalt = accountSalt.toLowerCase().trim();
   const payload = `${PASSWORD_PEPPER}:${normalizedSalt}:${password}`;
   let h1 = 0xdeadbeef ^ payload.length;
@@ -27,6 +44,71 @@ function computeSaltedPasswordHash(password: string, accountSalt: string): strin
   const hex1 = (h1 >>> 0).toString(16).padStart(8, '0');
   const hex2 = (h2 >>> 0).toString(16).padStart(8, '0');
   return `sh2$${normalizedSalt.slice(0, 8)}$${hex1}${hex2}`;
+}
+
+/**
+ * Cryptographic KDF using Web Crypto PBKDF2-HMAC-SHA256 (100,000 iterations + random 16-byte salt)
+ */
+async function hashPasswordPBKDF2(password: string, existingSaltHex?: string): Promise<string> {
+  if (typeof crypto === 'undefined' || !crypto.subtle) {
+    // Fallback only in environments lacking SubtleCrypto
+    const fallbackSalt = existingSaltHex || Math.random().toString(36).slice(2, 18);
+    return computeLegacySaltedHash(password, fallbackSalt);
+  }
+
+  const saltBytes = existingSaltHex
+    ? hexToBytes(existingSaltHex)
+    : crypto.getRandomValues(new Uint8Array(16));
+  const enc = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    enc.encode(password),
+    { name: 'PBKDF2' },
+    false,
+    ['deriveBits']
+  );
+  const derivedBits = await crypto.subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      salt: saltBytes as BufferSource,
+      iterations: PBKDF2_ITERATIONS,
+      hash: 'SHA-256',
+    },
+    keyMaterial,
+    256
+  );
+  const derivedHex = bytesToHex(new Uint8Array(derivedBits));
+  const saltHex = bytesToHex(saltBytes);
+  return `pbkdf2$${PBKDF2_ITERATIONS}$${saltHex}$${derivedHex}`;
+}
+
+async function verifyPasswordAgainstStoredHash(
+  password: string,
+  storedHash: string,
+  accountKey: string
+): Promise<{ matched: boolean; needsUpgrade: boolean }> {
+  if (storedHash.startsWith('pbkdf2$')) {
+    const parts = storedHash.split('$');
+    if (parts.length === 4) {
+      const saltHex = parts[2];
+      const recomputed = await hashPasswordPBKDF2(password, saltHex);
+      return { matched: recomputed === storedHash, needsUpgrade: false };
+    }
+    return { matched: false, needsUpgrade: false };
+  }
+
+  if (storedHash.startsWith('sh2$')) {
+    const expected = computeLegacySaltedHash(password, accountKey);
+    return { matched: storedHash === expected, needsUpgrade: storedHash === expected };
+  }
+
+  try {
+    const legacyMatch =
+      storedHash === btoa(encodeURIComponent(password)) || storedHash === btoa(password);
+    return { matched: legacyMatch, needsUpgrade: legacyMatch };
+  } catch {
+    return { matched: false, needsUpgrade: false };
+  }
 }
 
 // Seed demo users for the public culinary square
@@ -61,7 +143,19 @@ export function getCurrentUser(): UserProfile | null {
   try {
     const raw = localStorage.getItem(CURRENT_USER_KEY);
     if (!raw) return null;
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw) as UserProfile;
+    // Never allow Official Editorial identity to persist across browser restarts without an active session token
+    if (parsed?.uid === OFFICIAL_ACCOUNT_UID) {
+      const token =
+        typeof sessionStorage !== 'undefined'
+          ? sessionStorage.getItem(OPERATOR_TOKEN_SESSION_KEY)
+          : null;
+      if (!token) {
+        localStorage.removeItem(CURRENT_USER_KEY);
+        return null;
+      }
+    }
+    return parsed;
   } catch (err) {
     console.error('Failed to get current user', err);
     return null;
@@ -82,18 +176,71 @@ export function saveCurrentUser(user: UserProfile | null): void {
 }
 
 /**
- * Switch into the Official Editorial Chef Account (Operator Console)
+ * Verify Official Operator Passcode strictly via backend (/api/admin/login) — zero hardcoded secrets on client
  */
-export function loginAsOfficialEditorial(passcode: string): UserProfile {
+export async function loginAsOfficialEditorial(passcode: string): Promise<UserProfile> {
   const clean = passcode.trim();
-  if (clean !== 'Official2026!' && clean !== '8888') {
-    throw new Error('官方运营口令不正确（默认口令：Official2026! 或 8888） / Invalid operator passcode');
+  if (!clean) {
+    throw new Error('请输入服务端配置的官方运营口令 / Please enter the server-configured operator passcode');
+  }
+
+  let res: Response;
+  try {
+    res = await fetch('/api/admin/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passcode: clean }),
+    });
+  } catch {
+    throw new Error('无法连接后端鉴权服务，请确认服务端正在运行 / Unable to reach operator auth endpoint');
+  }
+
+  const data = (await res.json().catch(() => ({}))) as {
+    success?: boolean;
+    token?: string;
+    error?: string;
+  };
+
+  if (!res.ok || !data.success || !data.token) {
+    throw new Error(data.error || '官方运营口令验证未通过 / Operator authentication failed');
+  }
+
+  try {
+    sessionStorage.setItem(OPERATOR_TOKEN_SESSION_KEY, data.token);
+  } catch {
+    // ignore sessionStorage error
   }
   saveCurrentUser(OFFICIAL_EDITORIAL_USER);
   return OFFICIAL_EDITORIAL_USER;
 }
 
-// Get all locally registered accounts (pre-seeded with official App Review demo account & Official Editorial Chef)
+/**
+ * Validate active operator session token against backend
+ */
+export async function verifyOfficialOperatorSession(): Promise<{
+  authenticated: boolean;
+  configured: boolean;
+}> {
+  const token =
+    typeof sessionStorage !== 'undefined'
+      ? sessionStorage.getItem(OPERATOR_TOKEN_SESSION_KEY) || ''
+      : '';
+  try {
+    const res = await fetch('/api/admin/session', {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) return { authenticated: false, configured: false };
+    const data = (await res.json()) as { authenticated?: boolean; configured?: boolean };
+    return {
+      authenticated: Boolean(data.authenticated),
+      configured: Boolean(data.configured),
+    };
+  } catch {
+    return { authenticated: false, configured: false };
+  }
+}
+
+// Get locally registered accounts (never seeds privileged official credentials in client storage)
 function getRegisteredUsers(): Record<string, { user: UserProfile; passwordHash: string }> {
   const defaultDemoKey = 'demo_cook@culinaryjournal.app';
   const defaultDemoEntry = {
@@ -107,29 +254,26 @@ function getRegisteredUsers(): Record<string, { user: UserProfile; passwordHash:
       bio: 'Home cooking enthusiast exploring cozy culinary recipes.',
       createdAt: '2026-10-01',
     },
-    passwordHash: computeSaltedPasswordHash('Cook2026!', defaultDemoKey),
-  };
-
-  const officialKey = 'official@culinaryjournal.app';
-  const officialEntry = {
-    user: OFFICIAL_EDITORIAL_USER,
-    passwordHash: computeSaltedPasswordHash('Official2026!', officialKey),
+    passwordHash: computeLegacySaltedHash('Cook2026!', defaultDemoKey),
   };
 
   try {
     const raw = localStorage.getItem(REGISTERED_USERS_KEY);
-    const parsed = raw ? JSON.parse(raw) : {};
+    const parsed: Record<string, { user: UserProfile; passwordHash: string }> = raw
+      ? JSON.parse(raw)
+      : {};
+    // Scrub any legacy pre-seeded official backdoor account from local storage
+    if ('official@culinaryjournal.app' in parsed) {
+      delete parsed['official@culinaryjournal.app'];
+      localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(parsed));
+    }
     if (!parsed[defaultDemoKey]) {
       parsed[defaultDemoKey] = defaultDemoEntry;
-    }
-    if (!parsed[officialKey]) {
-      parsed[officialKey] = officialEntry;
     }
     return parsed;
   } catch {
     return {
       [defaultDemoKey]: defaultDemoEntry,
-      [officialKey]: officialEntry,
     };
   }
 }
@@ -157,11 +301,19 @@ function pickLocalAvatarForSeed(seed: string): string {
 }
 
 /**
- * Register with Username & Password (local multi-account profile with salted hash)
+ * Register with Username & Password (uses PBKDF2-HMAC-SHA256 100k iterations)
  */
-export function registerWithPassword(username: string, password: string, email?: string): UserProfile {
+export async function registerWithPassword(
+  username: string,
+  password: string,
+  email?: string
+): Promise<UserProfile> {
   const users = getRegisteredUsers();
   const key = username.toLowerCase().trim();
+
+  if (key === 'official@culinaryjournal.app') {
+    throw new Error('该邮箱为系统保留标识，请使用其他用户名注册');
+  }
 
   if (users[key]) {
     throw new Error('该账号已被注册，请直接登录或更换用户名 / Account already exists');
@@ -180,9 +332,10 @@ export function registerWithPassword(username: string, password: string, email?:
     createdAt: formatLocalDate(),
   };
 
+  const passwordHash = await hashPasswordPBKDF2(password);
   users[key] = {
     user: newUser,
-    passwordHash: computeSaltedPasswordHash(password, key),
+    passwordHash,
   };
   saveRegisteredUsers(users);
   saveCurrentUser(newUser);
@@ -190,13 +343,15 @@ export function registerWithPassword(username: string, password: string, email?:
 }
 
 /**
- * Login with Username or Email and Password
+ * Login with Username or Email and Password (verifies PBKDF2 and transparently upgrades legacy hashes)
  */
-export function loginWithPassword(identifier: string, password: string): UserProfile {
+export async function loginWithPassword(
+  identifier: string,
+  password: string
+): Promise<UserProfile> {
   const users = getRegisteredUsers();
   const key = identifier.toLowerCase().trim();
 
-  // Search by dictionary key, username, or email
   const foundEntry = Object.entries(users).find(
     ([dictKey, item]) =>
       dictKey === key ||
@@ -209,29 +364,20 @@ export function loginWithPassword(identifier: string, password: string): UserPro
   }
 
   const [entryKey, found] = foundEntry;
-  const expectedSalted = computeSaltedPasswordHash(password, entryKey);
-  const matchesSalted = found.passwordHash === expectedSalted;
+  const { matched, needsUpgrade } = await verifyPasswordAgainstStoredHash(
+    password,
+    found.passwordHash,
+    entryKey
+  );
 
-  // Backward-compatibility check for accounts registered under legacy v1 encoding, auto-upgrading hash on login
-  const matchesLegacyEncoded = (() => {
-    try {
-      return (
-        found.passwordHash === btoa(encodeURIComponent(password)) ||
-        found.passwordHash === btoa(password)
-      );
-    } catch {
-      return false;
-    }
-  })();
-
-  if (!matchesSalted && !matchesLegacyEncoded) {
+  if (!matched) {
     throw new Error('密码不正确，请重新输入 / Incorrect password');
   }
 
-  if (matchesLegacyEncoded && !matchesSalted) {
+  if (needsUpgrade) {
     users[entryKey] = {
       ...found,
-      passwordHash: expectedSalted,
+      passwordHash: await hashPasswordPBKDF2(password),
     };
     saveRegisteredUsers(users);
   }
@@ -378,6 +524,11 @@ export function deleteCurrentUserAccount(targetUser?: UserProfile | null): void 
       console.error('Failed to remove registered account record', err);
     }
   }
+  try {
+    sessionStorage.removeItem(OPERATOR_TOKEN_SESSION_KEY);
+  } catch {
+    // ignore
+  }
   saveCurrentUser(null);
 }
 
@@ -385,5 +536,10 @@ export function deleteCurrentUserAccount(targetUser?: UserProfile | null): void 
  * Logout
  */
 export function logoutUser(): void {
+  try {
+    sessionStorage.removeItem(OPERATOR_TOKEN_SESSION_KEY);
+  } catch {
+    // ignore
+  }
   saveCurrentUser(null);
 }
