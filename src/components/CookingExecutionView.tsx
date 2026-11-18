@@ -209,13 +209,23 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
     isListening: false
   });
 
+  const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
+  const [confirmingResetChecklist, setConfirmingResetChecklist] = useState(false);
+
+  const showVoiceNotice = (msg: string) => {
+    setVoiceNotice(msg);
+    setTimeout(() => {
+      setVoiceNotice((prev) => (prev === msg ? null : prev));
+    }, 4500);
+  };
+
   const handleToggleVoiceGuidance = () => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-      alert('抱歉，当前浏览器环境暂不支持 Web Speech API 语音朗读，建议使用 Chrome / Edge / Safari 浏览器体验下厨免动手语音引导！');
+      showVoiceNotice('当前浏览器环境暂不支持 Web Speech API 语音朗读，建议使用 Chrome / Edge / Safari 体验语音引导。');
       return;
     }
     if (!activeRecipe || !activeRecipe.steps || activeRecipe.steps.length === 0) {
-      alert('当前菜谱暂无制作步骤，无法启动语音引导。');
+      showVoiceNotice('当前菜谱暂无制作步骤，无法启动语音引导。');
       return;
     }
     if (voiceState.isSpeaking) {
@@ -330,12 +340,13 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
   };
 
   const handleResetChecklist = () => {
-    if (window.confirm('确定要重置当前菜谱的所有备料和制作勾选进度吗？')) {
-      setCheckedIngredients({});
-      setCheckedSteps({});
-      setCurrentSpokenStepIndex(0);
-      setExtraItems(prev => prev.map(e => ({ ...e, checked: false })));
-    }
+    setCheckedIngredients({});
+    setCheckedSteps({});
+    setCurrentSpokenStepIndex(0);
+    setExtraItems(prev => prev.map(e => ({ ...e, checked: false })));
+    setConfirmingResetChecklist(false);
+    setCompletionToast('已重置当前菜谱的备料与制作勾选进度');
+    setTimeout(() => setCompletionToast(null), 2500);
   };
 
   // Stats
@@ -453,14 +464,35 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
               </button>
             )}
 
-            <button
-              onClick={handleResetChecklist}
-              className="min-h-[44px] px-3 py-2 text-xs font-medium text-[#7A7268] hover:text-[#2C2723] bg-[#FAF7F2] hover:bg-[#EADBCE]/50 border border-[#EADBCE] rounded-xl transition-colors flex items-center gap-1.5"
-              title="重置当前进度"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>重置打勾</span>
-            </button>
+            {confirmingResetChecklist ? (
+              <div className="min-h-[44px] inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-rose-50 border border-rose-200 rounded-xl text-xs">
+                <span className="font-medium text-rose-700">重置所有进度？</span>
+                <button
+                  type="button"
+                  onClick={handleResetChecklist}
+                  className="px-2.5 py-1 font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg transition-colors"
+                >
+                  确认重置
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingResetChecklist(false)}
+                  className="px-2 py-1 font-medium text-[#7A7268] hover:text-[#2C2723] rounded-lg transition-colors"
+                >
+                  取消
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmingResetChecklist(true)}
+                className="min-h-[44px] px-3 py-2 text-xs font-medium text-[#7A7268] hover:text-[#2C2723] bg-[#FAF7F2] hover:bg-[#EADBCE]/50 border border-[#EADBCE] rounded-xl transition-colors flex items-center gap-1.5"
+                title="重置当前进度"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>重置打勾</span>
+              </button>
+            )}
             {activeRecipe && (
               <button
                 onClick={() => onOpenRecipe(activeRecipe)}
@@ -1592,6 +1624,23 @@ export const CookingExecutionView: React.FC<CookingExecutionViewProps> = ({
         <div className="fixed top-20 right-6 z-50 bg-[#2C2723] text-amber-100 text-xs py-2.5 px-4 rounded-xl border border-[#EADBCE] shadow-2xl flex items-center gap-2 animate-fade-in">
           <Bell className="w-4 h-4 text-amber-400 animate-bounce" />
           <span>{timerToast}</span>
+        </div>
+      )}
+
+      {/* Voice Notice Banner */}
+      {voiceNotice && (
+        <div
+          role="status"
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 max-w-md w-[calc(100%-2rem)] bg-[#2C2723] text-amber-100 text-xs py-2.5 px-4 rounded-xl border border-amber-400/40 shadow-2xl flex items-center justify-between gap-3 animate-fade-in"
+        >
+          <span>{voiceNotice}</span>
+          <button
+            type="button"
+            onClick={() => setVoiceNotice(null)}
+            className="text-amber-300 hover:text-white font-semibold shrink-0"
+          >
+            知道了
+          </button>
         </div>
       )}
 

@@ -100,6 +100,7 @@ export const ShoppingListModal: React.FC<ShoppingListModalProps> = ({
   // Toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isCopied, setIsCopied] = useState(false);
+  const [confirmingClearAlerts, setConfirmingClearAlerts] = useState(false);
 
   // Listen to external updates
   useEffect(() => {
@@ -715,17 +716,37 @@ export const ShoppingListModal: React.FC<ShoppingListModalProps> = ({
                   已生效的缺货补货预约提醒列表 ({restockAlerts.length})
                 </span>
                 {restockAlerts.length > 0 && (
-                  <button
-                    onClick={() => {
-                      if (window.confirm('确定清空所有缺货预约记录吗？')) {
-                        localStorage.removeItem(`food_journal_restock_alerts_v1_${currentUser?.uid || 'guest'}`);
-                        setRestockAlerts([]);
-                      }
-                    }}
-                    className="text-xs text-rose-500 hover:text-rose-700"
-                  >
-                    清空记录
-                  </button>
+                  confirmingClearAlerts ? (
+                    <div className="inline-flex items-center gap-1.5 bg-rose-50 border border-rose-200 rounded-lg px-2 py-1 text-xs">
+                      <span className="text-rose-700 font-medium">确认清空？</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          localStorage.removeItem(`food_journal_restock_alerts_v1_${currentUser?.uid || 'guest'}`);
+                          setRestockAlerts([]);
+                          setConfirmingClearAlerts(false);
+                        }}
+                        className="px-2 py-0.5 font-bold text-white bg-rose-600 hover:bg-rose-700 rounded transition-colors"
+                      >
+                        确认
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmingClearAlerts(false)}
+                        className="px-1.5 py-0.5 text-[#7A7268] hover:text-[#2C2723]"
+                      >
+                        取消
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmingClearAlerts(true)}
+                      className="text-xs text-rose-500 hover:text-rose-700"
+                    >
+                      清空记录
+                    </button>
+                  )
                 )}
               </div>
 

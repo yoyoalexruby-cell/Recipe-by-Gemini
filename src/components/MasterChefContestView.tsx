@@ -101,6 +101,7 @@ export const MasterChefContestView: React.FC<MasterChefContestViewProps> = ({
   const [submitCoverImage, setSubmitCoverImage] = useState('');
   const [submitSelectedRecipeId, setSubmitSelectedRecipeId] = useState('');
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Rating modal form fields
   const [rateTaste, setRateTaste] = useState(5);
@@ -126,8 +127,9 @@ export const MasterChefContestView: React.FC<MasterChefContestViewProps> = ({
   // Submit entry handler
   const handleSubmitEntry = (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitError(null);
     if (!submitTitle.trim() || !submitStory.trim()) {
-      alert(language === 'zh-CN' ? '请填写作品标题与下厨复盘心得！' : 'Please provide a title and cooking story!');
+      setSubmitError(language === 'zh-CN' ? '请填写作品标题与下厨复盘心得！' : 'Please provide a title and cooking story!');
       return;
     }
 
@@ -252,6 +254,7 @@ export const MasterChefContestView: React.FC<MasterChefContestViewProps> = ({
                   onOpenAuth();
                   return;
                 }
+                setSubmitError(null);
                 setIsSubmitModalOpen(true);
               }}
               className="px-5 py-3 bg-[#C85A32] hover:bg-[#B34C26] text-white text-sm font-bold rounded-xl shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 active:scale-98 min-h-[44px]"
@@ -576,6 +579,23 @@ export const MasterChefContestView: React.FC<MasterChefContestViewProps> = ({
             </div>
 
             <form onSubmit={handleSubmitEntry} className="space-y-4 text-xs">
+              {submitError && (
+                <div
+                  role="alert"
+                  className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 flex items-center justify-between gap-2"
+                >
+                  <span>{submitError}</span>
+                  <button
+                    type="button"
+                    onClick={() => setSubmitError(null)}
+                    className="text-rose-500 hover:text-rose-700"
+                    aria-label="Dismiss error"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
               {/* Option to link an existing recipe from user recipes */}
               {userRecipes.length > 0 && (
                 <div>
@@ -613,9 +633,8 @@ export const MasterChefContestView: React.FC<MasterChefContestViewProps> = ({
                 </label>
                 <input
                   type="text"
-                  required
                   value={submitTitle}
-                  onChange={(e) => setSubmitTitle(e.target.value)}
+                  onChange={(e) => { setSubmitTitle(e.target.value); if (submitError) setSubmitError(null); }}
                   placeholder={language === 'zh-CN' ? '例如：古法花雕慢煨90分钟 · 冰糖红亮挂汁版' : 'e.g. 90-Min Slow Braised with Floral Shaoxing Wine'}
                   className="w-full px-3 py-2 bg-[#FAF7F2] border border-[#EADBCE] rounded-xl text-xs text-[#2C2723] focus:outline-hidden focus:border-[#C85A32]"
                 />
@@ -655,10 +674,9 @@ export const MasterChefContestView: React.FC<MasterChefContestViewProps> = ({
                   {language === 'zh-CN' ? '做菜手记与心得故事 *' : 'Cooking Story & Reflections *'}
                 </label>
                 <textarea
-                  required
                   rows={4}
                   value={submitStory}
-                  onChange={(e) => setSubmitStory(e.target.value)}
+                  onChange={(e) => { setSubmitStory(e.target.value); if (submitError) setSubmitError(null); }}
                   placeholder={language === 'zh-CN' ? '分享您对这道菜的改良、火候的感悟或制作时难忘的细节...' : 'Share your adjustments, heat control experience, or memories...'}
                   className="w-full px-3 py-2 bg-[#FAF7F2] border border-[#EADBCE] rounded-xl text-xs text-[#2C2723] focus:outline-hidden focus:border-[#C85A32] leading-relaxed"
                 />

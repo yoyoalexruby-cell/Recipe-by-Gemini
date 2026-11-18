@@ -47,6 +47,7 @@ export const CalendarJournalView: React.FC<CalendarJournalViewProps> = ({
   const [isMarkModalOpen, setIsMarkModalOpen] = useState(false);
   const [markModalInitialDate, setMarkModalInitialDate] = useState<string>(todayStr);
   const [markModalRecipe, setMarkModalRecipe] = useState<Recipe | null>(null);
+  const [confirmingDeleteRecordId, setConfirmingDeleteRecordId] = useState<string | null>(null);
 
   // Listen to records update
   React.useEffect(() => {
@@ -242,10 +243,9 @@ export const CalendarJournalView: React.FC<CalendarJournalViewProps> = ({
   };
 
   const handleDeleteRecord = (recordId: string) => {
-    if (window.confirm('确定要移除这天的这道烹饪打卡记录吗？')) {
-      const updated = deleteCookingRecord(recordId, currentUser);
-      setRecords(updated);
-    }
+    const updated = deleteCookingRecord(recordId, currentUser);
+    setRecords(updated);
+    setConfirmingDeleteRecordId(null);
   };
 
   const monthNames = [
@@ -540,14 +540,36 @@ export const CalendarJournalView: React.FC<CalendarJournalViewProps> = ({
                     key={record.id}
                     className="p-4 bg-[#FAF7F2] border border-[#EADBCE] rounded-xl relative hover:border-[#C85A32]/60 transition-colors group"
                   >
-                    {/* Delete record button */}
-                    <button
-                      onClick={() => handleDeleteRecord(record.id)}
-                      className="absolute top-3 right-3 p-1 text-[#A8A29E] hover:text-rose-600 hover:bg-white rounded-md transition-colors opacity-0 group-hover:opacity-100"
-                      title="移除此条记录"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    {/* Delete record control */}
+                    {confirmingDeleteRecordId === record.id ? (
+                      <div className="absolute top-2.5 right-2.5 inline-flex items-center gap-1 bg-rose-50 border border-rose-200 rounded-md px-2 py-0.5 text-[11px] z-10 shadow-2xs">
+                        <span className="text-rose-700 font-medium">移除记录？</span>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteRecord(record.id)}
+                          className="px-1.5 py-0.5 font-bold text-white bg-rose-600 hover:bg-rose-700 rounded transition-colors"
+                        >
+                          确认
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmingDeleteRecordId(null)}
+                          className="px-1 py-0.5 text-[#7A7268] hover:text-[#2C2723]"
+                        >
+                          取消
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmingDeleteRecordId(record.id)}
+                        className="absolute top-3 right-3 p-1 text-[#A8A29E] hover:text-rose-600 hover:bg-white rounded-md transition-colors sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100"
+                        title="移除此条记录"
+                        aria-label="移除此条记录"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
 
                     {/* Dish Header Info */}
                     <div className="flex items-start gap-3">

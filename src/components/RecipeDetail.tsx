@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Recipe, Ingredient } from '../types/recipe';
 import { FoodArtFallback } from './IllustrationPresets';
 import { 
@@ -55,6 +55,11 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
   const [isExportPDFOpen, setIsExportPDFOpen] = useState(false);
   const [showNutritionBreakdown, setShowNutritionBreakdown] = useState(false);
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
+  const [confirmingDeleteRecipe, setConfirmingDeleteRecipe] = useState(false);
+
+  useEffect(() => {
+    setConfirmingDeleteRecipe(false);
+  }, [recipe.id]);
 
   const multiplier = servings / (recipe.baseServings || 1);
 
@@ -239,17 +244,37 @@ export const RecipeDetail: React.FC<RecipeDetailProps> = ({
             <span>{t('detail.edit', '编辑')}</span>
           </button>
 
-          <button
-            onClick={() => {
-              if (confirm(`${t('detail.confirmDelete', '确定要从手帐中移除此道菜谱吗？')} (${recipe.title})`)) {
-                onDelete(recipe.id);
-              }
-            }}
-            className="p-1.5 text-[#9A9085] hover:text-rose-600 rounded-md transition-colors"
-            title={t('detail.delete', '删除菜谱')}
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
+          {confirmingDeleteRecipe ? (
+            <div className="inline-flex items-center gap-1.5 bg-rose-50 border border-rose-200 rounded-md px-2 py-1">
+              <span className="text-[11px] font-medium text-rose-700">
+                {language === 'zh-CN' ? '确认删除？' : 'Delete?'}
+              </span>
+              <button
+                type="button"
+                onClick={() => onDelete(recipe.id)}
+                className="px-2 py-0.5 text-[11px] font-bold text-white bg-rose-600 hover:bg-rose-700 rounded transition-colors"
+              >
+                {language === 'zh-CN' ? '确认' : 'Confirm'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmingDeleteRecipe(false)}
+                className="px-1.5 py-0.5 text-[11px] font-medium text-[#7A7268] hover:text-[#2C2723] rounded transition-colors"
+              >
+                {t('action.cancel', '取消')}
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmingDeleteRecipe(true)}
+              className="p-1.5 text-[#9A9085] hover:text-rose-600 rounded-md transition-colors"
+              title={t('detail.delete', '删除菜谱')}
+              aria-label={t('detail.delete', '删除菜谱')}
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
 

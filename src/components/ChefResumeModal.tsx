@@ -1,4 +1,4 @@
-import React, { useRef, useState, useMemo } from 'react';
+import React, { useRef, useState, useMemo, useEffect } from 'react';
 import { UserProfile } from '../types/auth';
 import { Recipe } from '../types/recipe';
 import { UserLevelInfo } from '../types/membership';
@@ -33,11 +33,24 @@ export const ChefResumeModal: React.FC<ChefResumeModalProps> = ({
   const [copiedLink, setCopiedLink] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
   const [posterTheme, setPosterTheme] = useState<'warmParchment' | 'goldObsidian' | 'vintageKraft'>('warmParchment');
+  const [exportError, setExportError] = useState<string | null>(null);
 
   // Compute resume details
   const resumeData: ChefResumeData = useMemo(() => {
     return buildChefResumeData(user, recipes, levelInfo, totalLikesReceived);
   }, [user, recipes, levelInfo, totalLikesReceived]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setExportError(null);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -48,6 +61,7 @@ export const ChefResumeModal: React.FC<ChefResumeModalProps> = ({
     if (!posterRef.current) return;
     try {
       setIsExporting(true);
+      setExportError(null);
       
       // Allow DOM to settle, apply pixel ratio 2 for crisp retina rendering
       const dataUrl = await toPng(posterRef.current, {
@@ -74,8 +88,7 @@ export const ChefResumeModal: React.FC<ChefResumeModalProps> = ({
       setTimeout(() => setDownloadSuccess(false), 3000);
     } catch (err) {
       console.error('Failed to export resume poster', err);
-      // Fallback: simple print or alert
-      alert(language === 'zh-CN' ? '保存海报失败，请稍后重试' : 'Failed to save poster image.');
+      setExportError(language === 'zh-CN' ? '保存海报失败，请稍后重试或使用「复制文字版」。' : 'Failed to save poster image. Please try again.');
     } finally {
       setIsExporting(false);
     }
@@ -99,8 +112,17 @@ export const ChefResumeModal: React.FC<ChefResumeModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/70 backdrop-blur-sm overflow-y-auto">
-      <div className="bg-[#FAF7F2] rounded-3xl border border-[#EADBCE] shadow-2xl max-w-xl w-full my-6 overflow-hidden flex flex-col max-h-[92vh]">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/70 backdrop-blur-sm overflow-y-auto"
+      role="dialog"
+      aria-modal="true"
+      aria-label={language === 'zh-CN' ? '我的厨神履历档案' : 'My Culinary Master Resume'}
+      onClick={onClose}
+    >
+      <div
+        className="bg-[#FAF7F2] rounded-3xl border border-[#EADBCE] shadow-2xl max-w-xl w-full my-6 overflow-hidden flex flex-col max-h-[92vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
         
         {/* Header Bar */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#EADBCE] bg-[#FFFDF9] shrink-0">
@@ -453,6 +475,24 @@ export const ChefResumeModal: React.FC<ChefResumeModalProps> = ({
             </div>
           </div>
         </div>
+
+        {/* Inline export error */}
+        {exportError && (
+          <div
+            role="alert"
+            className="mx-4 mt-2 px-3 py-2 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center justify-between gap-2 shrink-0"
+          >
+            <span>{exportError}</span>
+            <button
+              type="button"
+              onClick={() => setExportError(null)}
+              className="text-rose-500 hover:text-rose-700 shrink-0"
+              aria-label="Close error"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Action Buttons Toolbar at Bottom */}
         <div className="p-4 bg-[#FFFDF9] border-t border-[#EADBCE] flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">

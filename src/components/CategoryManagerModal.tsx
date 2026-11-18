@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, Plus, Trash2, Tag, Sparkles, FolderPlus, 
   Layers, Check, AlertCircle, Info 
@@ -12,7 +12,6 @@ import {
   deleteCustomCategory, 
   deleteCustomSubcategory 
 } from '../utils/taxonomyStorage';
-import { ALL_CATEGORIES_LIST } from '../types/categories';
 import { useI18n } from '../i18n/context';
 
 interface CategoryManagerModalProps {
@@ -32,8 +31,6 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
   defaultParentCategory,
   onTaxonomyChanged
 }) => {
-  if (!isOpen) return null;
-
   const { t, language, getCategoryLabel, getSubcategoryLabel } = useI18n();
   const [activeTab, setActiveTab] = useState<'add_sub' | 'add_cat' | 'manage'>('add_sub');
   
@@ -50,6 +47,27 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
   const [catDesc, setCatDesc] = useState('');
   const [catIcon, setCatIcon] = useState('🍢');
 
+  // Inline feedback & two-step delete confirmations
+  const [formError, setFormError] = useState<string | null>(null);
+  const [pendingDeleteCatId, setPendingDeleteCatId] = useState<string | null>(null);
+  const [pendingDeleteSubKey, setPendingDeleteSubKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setFormError(null);
+    setPendingDeleteCatId(null);
+    setPendingDeleteSubKey(null);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
+
   // Load latest taxonomy data
   const mergedTaxonomy = getMergedTaxonomy(currentUser);
   const customData = getCustomTaxonomyData(currentUser);
@@ -60,8 +78,9 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
 
   const handleCreateSub = (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
     if (!subName.trim()) {
-      alert(language === 'zh-CN' ? '请输入细分名录名称！' : 'Please enter subcategory name!');
+      setFormError(language === 'zh-CN' ? '请输入细分名录名称！' : 'Please enter subcategory name!');
       return;
     }
     const success = addCustomSubcategory(
@@ -76,13 +95,16 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
       setSubDesc('');
       if (onTaxonomyChanged) onTaxonomyChanged();
       onClose();
+    } else {
+      setFormError(language === 'zh-CN' ? '该细分名录已存在或无法添加，请换一个名称重试。' : 'Subcategory already exists or could not be added.');
     }
   };
 
   const handleCreateCat = (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
     if (!catName.trim()) {
-      alert(language === 'zh-CN' ? '请输入一级大类名录名称！' : 'Please enter category name!');
+      setFormError(language === 'zh-CN' ? '请输入一级大类名录名称！' : 'Please enter category name!');
       return;
     }
     const success = addCustomCategory(
@@ -96,31 +118,31 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
       setCatDesc('');
       if (onTaxonomyChanged) onTaxonomyChanged();
       onClose();
+    } else {
+      setFormError(language === 'zh-CN' ? '该一级大类名录已存在，请换一个名称重试。' : 'Category already exists.');
     }
   };
 
-  const handleDeleteCustomCat = (id: string) => {
-    const confirmMsg = language === 'zh-CN'
-      ? `确定要移除自定义名录「${id}」及其下所有细分吗？`
-      : `Are you sure you want to remove custom category "${id}" and all its subcategories?`;
-    if (window.confirm(confirmMsg)) {
-      deleteCustomCategory(id, currentUser);
-      if (onTaxonomyChanged) onTaxonomyChanged();
-    }
+  const handleConfirmDeleteCustomCat = (id: string) => {
+    deleteCustomCategory(id, currentUser);
+    setPendingDeleteCatId(null);
+    if (onTaxonomyChanged) onTaxonomyChanged();
   };
 
-  const handleDeleteCustomSub = (parent: string, subId: string) => {
-    const confirmMsg = language === 'zh-CN'
-      ? `确定要从「${parent}」中移除细分名录「${subId}」吗？`
-      : `Are you sure you want to remove subcategory "${subId}" from "${parent}"?`;
-    if (window.confirm(confirmMsg)) {
-      deleteCustomSubcategory(parent, subId, currentUser);
-      if (onTaxonomyChanged) onTaxonomyChanged();
-    }
+  const handleConfirmDeleteCustomSub = (parent: string, subId: string) => {
+    deleteCustomSubcategory(parent, subId, currentUser);
+    setPendingDeleteSubKey(null);
+    if (onTaxonomyChanged) onTaxonomyChanged();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/45 backdrop-blur-xs animate-fade-in">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/45 backdrop-blur-xs animate-fade-in"
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('自定义菜谱名录 · 分类管理')}
+      onClick={onClose}
+    >
       <div 
         className="w-full max-w-xl bg-[#FAF7F2] border border-[#EADBCE] rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
@@ -151,7 +173,7 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
         {/* Tab switchers */}
         <div className="px-6 pt-3 bg-white border-b border-[#EADBCE] flex items-center gap-2">
           <button
-            onClick={() => setActiveTab('add_sub')}
+            onClick={() => { setActiveTab('add_sub'); setFormError(null); }}
             className={`px-3 py-2 text-xs font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${
               activeTab === 'add_sub'
                 ? 'border-[#C85A32] text-[#C85A32]'
@@ -163,7 +185,7 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
           </button>
 
           <button
-            onClick={() => setActiveTab('add_cat')}
+            onClick={() => { setActiveTab('add_cat'); setFormError(null); }}
             className={`px-3 py-2 text-xs font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${
               activeTab === 'add_cat'
                 ? 'border-[#C85A32] text-[#C85A32]'
@@ -175,7 +197,7 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
           </button>
 
           <button
-            onClick={() => setActiveTab('manage')}
+            onClick={() => { setActiveTab('manage'); setFormError(null); }}
             className={`px-3 py-2 text-xs font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${
               activeTab === 'manage'
                 ? 'border-[#C85A32] text-[#C85A32]'
@@ -189,6 +211,25 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
 
         {/* Body Content */}
         <div className="p-6 overflow-y-auto flex-1 space-y-5">
+          {formError && (
+            <div
+              role="alert"
+              className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center justify-between gap-2"
+            >
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{formError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFormError(null)}
+                className="text-rose-500 hover:text-rose-700"
+                aria-label="Close error"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
           
           {/* TAB 1: ADD SUBCATEGORY */}
           {activeTab === 'add_sub' && (
@@ -227,9 +268,8 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
                   type="text"
                   placeholder={language === 'zh-CN' ? '例：法式派挞、古法蒸糕、手作果酱、特调咖啡' : 'e.g. French Pies, Sourdough, Artisan Jam, Handcrafted Coffee'}
                   value={subName}
-                  onChange={(e) => setSubName(e.target.value)}
+                  onChange={(e) => { setSubName(e.target.value); if (formError) setFormError(null); }}
                   className="w-full px-3 py-2 text-xs bg-white border border-[#EADBCE] rounded-lg focus:outline-hidden focus:border-[#C85A32] text-[#2C2723]"
-                  required
                 />
               </div>
 
@@ -318,9 +358,8 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
                   type="text"
                   placeholder={language === 'zh-CN' ? '例：夜宵烧烤、宝宝辅食、私房调饮、露营野炊' : 'e.g. Late-night BBQ, Baby Food, Craft Drinks, Camping Feast'}
                   value={catName}
-                  onChange={(e) => setCatName(e.target.value)}
+                  onChange={(e) => { setCatName(e.target.value); if (formError) setFormError(null); }}
                   className="w-full px-3 py-2 text-xs bg-white border border-[#EADBCE] rounded-lg focus:outline-hidden focus:border-[#C85A32] text-[#2C2723]"
-                  required
                 />
               </div>
 
@@ -427,41 +466,93 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
                         </div>
 
                         {isCustomCat && (
-                          <button
-                            onClick={() => handleDeleteCustomCat(catKey)}
-                            className="p-1 text-[#A8A29E] hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
-                            title={language === 'zh-CN' ? '删除自定义大类' : 'Delete custom category'}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          pendingDeleteCatId === catKey ? (
+                            <div className="inline-flex items-center gap-1.5 bg-rose-50 border border-rose-200 rounded-md px-2 py-0.5 text-[11px]">
+                              <span className="text-rose-700 font-medium">
+                                {language === 'zh-CN' ? '移除此大类？' : 'Remove?'}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleConfirmDeleteCustomCat(catKey)}
+                                className="px-1.5 py-0.5 font-bold text-white bg-rose-600 hover:bg-rose-700 rounded transition-colors"
+                              >
+                                {language === 'zh-CN' ? '确认' : 'Confirm'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setPendingDeleteCatId(null)}
+                                className="px-1 py-0.5 text-[#7A7268] hover:text-[#2C2723]"
+                              >
+                                {t('action.cancel', '取消')}
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPendingDeleteSubKey(null);
+                                setPendingDeleteCatId(catKey);
+                              }}
+                              className="p-1 text-[#A8A29E] hover:text-rose-600 hover:bg-rose-50 rounded-md transition-colors"
+                              title={language === 'zh-CN' ? '删除自定义大类' : 'Delete custom category'}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )
                         )}
                       </div>
 
                       {/* Subcategories */}
                       <div className="flex flex-wrap gap-1.5 pt-1 border-t border-[#EADBCE]/50">
                         {catInfo.subcategories.map((sub) => {
-                          const isCustomSub = customSubKeys.has(`${catKey}__${sub.id}`);
+                          const subKey = `${catKey}__${sub.id}`;
+                          const isCustomSub = customSubKeys.has(subKey);
+                          const isConfirmingSub = pendingDeleteSubKey === subKey;
 
                           return (
                             <div
                               key={sub.id}
                               className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs border ${
-                                isCustomSub
-                                  ? 'bg-[#FAF3EC] border-[#C85A32]/40 text-[#C85A32]'
-                                  : 'bg-[#FAF7F2] border-[#EADBCE] text-[#5A5248]'
+                                isConfirmingSub
+                                  ? 'bg-rose-50 border-rose-300 text-rose-700'
+                                  : isCustomSub
+                                    ? 'bg-[#FAF3EC] border-[#C85A32]/40 text-[#C85A32]'
+                                    : 'bg-[#FAF7F2] border-[#EADBCE] text-[#5A5248]'
                               }`}
                             >
                               <span>{sub.icon || '🥢'}</span>
                               <span className="font-medium">{getSubcategoryLabel(sub.id)}</span>
                               {isCustomSub && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteCustomSub(catKey, sub.id)}
-                                  className="ml-1 text-[#A8A29E] hover:text-rose-600 transition-colors"
-                                  title={language === 'zh-CN' ? '移除此自定义细分' : 'Remove custom subcategory'}
-                                >
-                                  <X className="w-3 h-3" />
-                                </button>
+                                isConfirmingSub ? (
+                                  <span className="inline-flex items-center gap-1 ml-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleConfirmDeleteCustomSub(catKey, sub.id)}
+                                      className="px-1.5 py-0.5 text-[10px] font-bold text-white bg-rose-600 hover:bg-rose-700 rounded"
+                                    >
+                                      {language === 'zh-CN' ? '删' : 'Yes'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setPendingDeleteSubKey(null)}
+                                      className="px-1 py-0.5 text-[10px] text-[#7A7268] hover:text-[#2C2723]"
+                                    >
+                                      {language === 'zh-CN' ? '取消' : 'No'}
+                                    </button>
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setPendingDeleteCatId(null);
+                                      setPendingDeleteSubKey(subKey);
+                                    }}
+                                    className="ml-1 text-[#A8A29E] hover:text-rose-600 transition-colors"
+                                    title={language === 'zh-CN' ? '移除此自定义细分' : 'Remove custom subcategory'}
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                )
                               )}
                             </div>
                           );
