@@ -27,7 +27,7 @@ interface CookingExecutionViewProps {
   onStartTimer?: (minutes: number, label: string) => void;
   currentUser?: UserProfile | null;
   onEditRecipe?: (recipe: Recipe) => void;
-  onSaveRecipe?: (recipe: Recipe) => void;
+  onSaveRecipe?: (recipe: Recipe) => void | boolean | Promise<boolean>;
   onCloneRecipe?: (recipe: Recipe) => void;
 }
 

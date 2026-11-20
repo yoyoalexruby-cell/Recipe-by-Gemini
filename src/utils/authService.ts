@@ -5,6 +5,7 @@ import { formatLocalDate } from './dateUtils';
 
 export const CURRENT_USER_KEY = 'food_journal_auth_user_v1';
 export const OPERATOR_TOKEN_SESSION_KEY = 'culinary_operator_token_v1';
+export const OFFICIAL_SESSION_USER_KEY = 'culinary_operator_user_v1';
 const REGISTERED_USERS_KEY = 'food_journal_registered_users_v1';
 const PASSWORD_PEPPER = 'culinary_journal_local_salt_v2_2026';
 const PBKDF2_ITERATIONS = 100_000;
@@ -139,21 +140,45 @@ export const DEMO_COMMUNITY_USERS: UserProfile[] = [
   },
 ];
 
+function hasStructurallyValidOperatorToken(token: string | null): boolean {
+  if (!token) return false;
+  const parts = token.split('.');
+  if (parts.length !== 3) return false;
+  const [expStr, nonce, sig] = parts;
+  const exp = Number(expStr);
+  if (!Number.isFinite(exp) || Date.now() > exp) return false;
+  return nonce.length >= 16 && sig.length >= 32;
+}
+
+export function isOfficialUser(user?: UserProfile | null): boolean {
+  return user?.uid === OFFICIAL_ACCOUNT_UID;
+}
+
 export function getCurrentUser(): UserProfile | null {
   try {
+    // Official operator identity is stored strictly in sessionStorage, paired with a non-expired operator token
+    if (typeof sessionStorage !== 'undefined') {
+      const token = sessionStorage.getItem(OPERATOR_TOKEN_SESSION_KEY);
+      const officialRaw = sessionStorage.getItem(OFFICIAL_SESSION_USER_KEY);
+      if (officialRaw) {
+        if (hasStructurallyValidOperatorToken(token)) {
+          const parsedOfficial = JSON.parse(officialRaw) as UserProfile;
+          if (parsedOfficial?.uid === OFFICIAL_ACCOUNT_UID) {
+            return parsedOfficial;
+          }
+        }
+        sessionStorage.removeItem(OFFICIAL_SESSION_USER_KEY);
+        sessionStorage.removeItem(OPERATOR_TOKEN_SESSION_KEY);
+      }
+    }
+
     const raw = localStorage.getItem(CURRENT_USER_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as UserProfile;
-    // Never allow Official Editorial identity to persist across browser restarts without an active session token
+    // Never allow Official Editorial identity to be spoofed or restored from localStorage
     if (parsed?.uid === OFFICIAL_ACCOUNT_UID) {
-      const token =
-        typeof sessionStorage !== 'undefined'
-          ? sessionStorage.getItem(OPERATOR_TOKEN_SESSION_KEY)
-          : null;
-      if (!token) {
-        localStorage.removeItem(CURRENT_USER_KEY);
-        return null;
-      }
+      localStorage.removeItem(CURRENT_USER_KEY);
+      return null;
     }
     return parsed;
   } catch (err) {
@@ -164,10 +189,23 @@ export function getCurrentUser(): UserProfile | null {
 
 export function saveCurrentUser(user: UserProfile | null): void {
   try {
-    if (user) {
+    if (user?.uid === OFFICIAL_ACCOUNT_UID) {
+      localStorage.removeItem(CURRENT_USER_KEY);
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.setItem(OFFICIAL_SESSION_USER_KEY, JSON.stringify(user));
+      }
+    } else if (user) {
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.removeItem(OFFICIAL_SESSION_USER_KEY);
+        sessionStorage.removeItem(OPERATOR_TOKEN_SESSION_KEY);
+      }
       localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
     } else {
       localStorage.removeItem(CURRENT_USER_KEY);
+      if (typeof sessionStorage !== 'undefined') {
+        sessionStorage.removeItem(OFFICIAL_SESSION_USER_KEY);
+        sessionStorage.removeItem(OPERATOR_TOKEN_SESSION_KEY);
+      }
     }
     window.dispatchEvent(new CustomEvent('auth-state-changed', { detail: user }));
   } catch (err) {
@@ -238,6 +276,19 @@ export async function verifyOfficialOperatorSession(): Promise<{
   } catch {
     return { authenticated: false, configured: false };
   }
+}
+
+/**
+ * Re-verify Official Operator token with backend before privileged official actions;
+ * automatically clears spoofed or expired sessionStorage credentials if invalid.
+ */
+export async function verifyOfficialOperatorOrLogout(): Promise<boolean> {
+  const { authenticated } = await verifyOfficialOperatorSession();
+  if (!authenticated) {
+    logoutUser();
+    return false;
+  }
+  return true;
 }
 
 // Get locally registered accounts (never seeds privileged official credentials in client storage)
@@ -526,6 +577,7 @@ export function deleteCurrentUserAccount(targetUser?: UserProfile | null): void 
   }
   try {
     sessionStorage.removeItem(OPERATOR_TOKEN_SESSION_KEY);
+    sessionStorage.removeItem(OFFICIAL_SESSION_USER_KEY);
   } catch {
     // ignore
   }
@@ -538,6 +590,7 @@ export function deleteCurrentUserAccount(targetUser?: UserProfile | null): void 
 export function logoutUser(): void {
   try {
     sessionStorage.removeItem(OPERATOR_TOKEN_SESSION_KEY);
+    sessionStorage.removeItem(OFFICIAL_SESSION_USER_KEY);
   } catch {
     // ignore
   }

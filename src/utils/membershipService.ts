@@ -4,24 +4,33 @@ import { getCookingRecords } from './cookingLogStorage';
 import { getContestSubmissions } from './contestStorage';
 import { formatLocalDate } from './dateUtils';
 
-const CLAIMED_TASKS_KEY = 'culinary_claimed_tasks_v1';
-const DAILY_CHECKIN_KEY = 'culinary_daily_checkin_v1';
+import { getCurrentUser } from './authService';
 
-export function getClaimedTaskIds(): string[] {
+export function getClaimedTasksKey(user?: UserProfile | null): string {
+  const uid = (user !== undefined ? user?.uid : getCurrentUser()?.uid) || 'guest';
+  return `culinary_claimed_tasks_v1_${uid}`;
+}
+
+export function getDailyCheckinKey(user?: UserProfile | null): string {
+  const uid = (user !== undefined ? user?.uid : getCurrentUser()?.uid) || 'guest';
+  return `culinary_daily_checkin_v1_${uid}`;
+}
+
+export function getClaimedTaskIds(user?: UserProfile | null): string[] {
   try {
-    const raw = localStorage.getItem(CLAIMED_TASKS_KEY);
+    const raw = localStorage.getItem(getClaimedTasksKey(user));
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
   }
 }
 
-export function claimTaskReward(taskId: string): boolean {
+export function claimTaskReward(taskId: string, user?: UserProfile | null): boolean {
   try {
-    const claimed = getClaimedTaskIds();
+    const claimed = getClaimedTaskIds(user);
     if (claimed.includes(taskId)) return false;
     const updated = [...claimed, taskId];
-    localStorage.setItem(CLAIMED_TASKS_KEY, JSON.stringify(updated));
+    localStorage.setItem(getClaimedTasksKey(user), JSON.stringify(updated));
     window.dispatchEvent(new CustomEvent('membership-updated'));
     return true;
   } catch {
@@ -29,24 +38,24 @@ export function claimTaskReward(taskId: string): boolean {
   }
 }
 
-export function checkIsDailyCheckedIn(): boolean {
+export function checkIsDailyCheckedIn(user?: UserProfile | null): boolean {
   try {
     const today = formatLocalDate();
-    const last = localStorage.getItem(DAILY_CHECKIN_KEY);
+    const last = localStorage.getItem(getDailyCheckinKey(user));
     return last === today;
   } catch {
     return false;
   }
 }
 
-export function performDailyCheckin(): { success: boolean; expGained: number } {
-  if (checkIsDailyCheckedIn()) {
+export function performDailyCheckin(user?: UserProfile | null): { success: boolean; expGained: number } {
+  if (checkIsDailyCheckedIn(user)) {
     return { success: false, expGained: 0 };
   }
   const today = formatLocalDate();
   try {
-    localStorage.setItem(DAILY_CHECKIN_KEY, today);
-    claimTaskReward(`daily_checkin_${today}`);
+    localStorage.setItem(getDailyCheckinKey(user), today);
+    claimTaskReward(`daily_checkin_${today}`, user);
     window.dispatchEvent(new CustomEvent('membership-updated'));
     return { success: true, expGained: 20 };
   } catch {
@@ -60,7 +69,7 @@ export function getUserLevelInfo(
   publicRecipeCount: number,
   totalLikesReceived: number
 ): { levelInfo: UserLevelInfo; tasks: UserTask[] } {
-  const claimed = getClaimedTaskIds();
+  const claimed = getClaimedTaskIds(user);
   const cookingLogs = getCookingRecords(user);
   const contestSubmissions = getContestSubmissions();
   const userContestCount = contestSubmissions.filter((s) => s.authorId === user?.uid).length;
@@ -109,9 +118,9 @@ export function getUserLevelInfo(
       descriptionEn: 'Daily check-in reward for active cooking',
       expReward: 20,
       category: 'daily',
-      currentProgress: checkIsDailyCheckedIn() ? 1 : 0,
+      currentProgress: checkIsDailyCheckedIn(user) ? 1 : 0,
       targetProgress: 1,
-      isCompleted: checkIsDailyCheckedIn(),
+      isCompleted: checkIsDailyCheckedIn(user),
       isClaimed: claimed.includes('task_daily_checkin'),
       icon: '🔥'
     },

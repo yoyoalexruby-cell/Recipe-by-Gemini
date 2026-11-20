@@ -1,6 +1,9 @@
 import { Recipe } from '../types/recipe';
 import { getAllMasterRecipes } from './multiUserStorage';
 
+import { UserProfile } from '../types/auth';
+import { getCurrentUser } from './authService';
+
 export interface GitHubConfig {
   token: string;
   owner: string;
@@ -11,11 +14,16 @@ export interface GitHubConfig {
   lastCommitSha?: string;
 }
 
-const GITHUB_CONFIG_KEY = 'food_journal_github_config_v1';
+const GITHUB_CONFIG_KEY_PREFIX = 'food_journal_github_config_v1';
 
-export function getGitHubConfig(): GitHubConfig {
+export function getGitHubConfigKey(user?: UserProfile | null): string {
+  const uid = (user !== undefined ? user?.uid : getCurrentUser()?.uid) || 'guest';
+  return `${GITHUB_CONFIG_KEY_PREFIX}_${uid}`;
+}
+
+export function getGitHubConfig(user?: UserProfile | null): GitHubConfig {
   try {
-    const raw = localStorage.getItem(GITHUB_CONFIG_KEY);
+    const raw = localStorage.getItem(getGitHubConfigKey(user));
     if (raw) return JSON.parse(raw);
   } catch (err) {
     console.error('Failed to load GitHub config', err);
@@ -29,9 +37,9 @@ export function getGitHubConfig(): GitHubConfig {
   };
 }
 
-export function saveGitHubConfig(config: GitHubConfig): void {
+export function saveGitHubConfig(config: GitHubConfig, user?: UserProfile | null): void {
   try {
-    localStorage.setItem(GITHUB_CONFIG_KEY, JSON.stringify(config));
+    localStorage.setItem(getGitHubConfigKey(user), JSON.stringify(config));
   } catch (err) {
     console.error('Failed to save GitHub config', err);
   }

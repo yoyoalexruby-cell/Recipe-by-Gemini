@@ -3,9 +3,16 @@
  * Compliant with Apple App Store Guideline 1.2 (User-Generated Content Safety)
  */
 
-const BLOCKED_USERS_KEY = 'culinary_blocked_users_v1';
-const REPORTED_ITEMS_KEY = 'culinary_reported_items_v1';
-const TAKEDOWN_IDS_KEY = 'culinary_takedown_ids_v1';
+import { UserProfile } from '../types/auth';
+import { getCurrentUser } from './authService';
+
+export function getBlockedUsersKey(user?: UserProfile | null): string {
+  const uid = (user !== undefined ? user?.uid : getCurrentUser()?.uid) || 'guest';
+  return `culinary_blocked_users_v1_${uid}`;
+}
+
+export const REPORTED_ITEMS_KEY = 'culinary_reported_items_v1';
+export const TAKEDOWN_IDS_KEY = 'culinary_takedown_ids_v1';
 
 export interface UGCReportItem {
   id?: string;
@@ -14,6 +21,7 @@ export interface UGCReportItem {
   targetTitle: string;
   authorId: string;
   authorName: string;
+  reporterId?: string;
   reason: string;
   reportedAt: string;
   status?: 'pending' | 'removed' | 'dismissed';
@@ -72,21 +80,21 @@ export function auditUGCContentSafety(textFields: string[]): ContentAuditResult 
   return { passed: true };
 }
 
-export function getBlockedUserIds(): string[] {
+export function getBlockedUserIds(user?: UserProfile | null): string[] {
   try {
-    const raw = localStorage.getItem(BLOCKED_USERS_KEY);
+    const raw = localStorage.getItem(getBlockedUsersKey(user));
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
   }
 }
 
-export function blockUser(authorId: string, authorName: string): boolean {
+export function blockUser(authorId: string, authorName: string, user?: UserProfile | null): boolean {
   try {
-    const list = getBlockedUserIds();
+    const list = getBlockedUserIds(user);
     if (list.includes(authorId)) return true;
     const updated = [...list, authorId];
-    localStorage.setItem(BLOCKED_USERS_KEY, JSON.stringify(updated));
+    localStorage.setItem(getBlockedUsersKey(user), JSON.stringify(updated));
     window.dispatchEvent(new CustomEvent('ugc-moderation-updated', { detail: { type: 'block', authorId, authorName } }));
     return true;
   } catch {
@@ -94,11 +102,11 @@ export function blockUser(authorId: string, authorName: string): boolean {
   }
 }
 
-export function unblockUser(authorId: string): boolean {
+export function unblockUser(authorId: string, user?: UserProfile | null): boolean {
   try {
-    const list = getBlockedUserIds();
+    const list = getBlockedUserIds(user);
     const updated = list.filter((id) => id !== authorId);
-    localStorage.setItem(BLOCKED_USERS_KEY, JSON.stringify(updated));
+    localStorage.setItem(getBlockedUsersKey(user), JSON.stringify(updated));
     window.dispatchEvent(new CustomEvent('ugc-moderation-updated', { detail: { type: 'unblock', authorId } }));
     return true;
   } catch {
@@ -157,8 +165,10 @@ export function getReportedItems(): UGCReportItem[] {
 export function reportUGCContent(item: Omit<UGCReportItem, 'reportedAt'>): boolean {
   try {
     const current = getReportedItems();
+    const activeUid = item.reporterId || getCurrentUser()?.uid || 'guest';
     const newEntry: UGCReportItem = {
       ...item,
+      reporterId: activeUid,
       id: 'rep_' + Date.now().toString(36),
       status: 'pending',
       reportedAt: new Date().toISOString()

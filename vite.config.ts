@@ -44,9 +44,36 @@ export default defineConfig(() => {
           ],
         },
         workbox: {
-          maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
-          globPatterns: ['**/*.{js,css,html,ico,png,jpg,jpeg,webp,svg,woff,woff2}'],
+          maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
+          globPatterns: [
+            '**/*.{js,css,html,ico,svg,woff,woff2}',
+            'pwa-*.png',
+            'apple-touch-icon.png',
+            'manifest.webmanifest',
+          ],
+          globIgnores: [
+            '**/assets/aistudio/**',
+            '**/screenshot_*',
+            '**/icon_*',
+            '**/dish_*',
+            '**/app-icon.png',
+            '**/app_icon_*',
+          ],
           runtimeCaching: [
+            {
+              urlPattern: /\.(?:png|jpg|jpeg|webp|gif|svg)$/i,
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'culinary-images-cache',
+                expiration: {
+                  maxEntries: 80,
+                  maxAgeSeconds: 60 * 60 * 24 * 30,
+                },
+                cacheableResponse: {
+                  statuses: [0, 200],
+                },
+              },
+            },
             {
               urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
               handler: 'CacheFirst',

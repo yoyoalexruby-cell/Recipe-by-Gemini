@@ -2,8 +2,16 @@ import { Recipe } from '../types/recipe';
 import { INITIAL_RECIPES } from '../data/initialRecipes';
 import { formatLocalDate } from './dateUtils';
 
+import { UserProfile } from '../types/auth';
+import { getCurrentUser } from './authService';
+
 const STORAGE_KEY = 'food_journal_master_recipes_v2';
-const PANTRY_CHECKED_KEY = 'food_journal_pantry_v1';
+export const MAX_RAW_IMAGE_BYTES = 15 * 1024 * 1024; // 15MB raw upload safety cap
+
+export function getPantryCheckedKey(user?: UserProfile | null): string {
+  const uid = (user !== undefined ? user?.uid : getCurrentUser()?.uid) || 'guest';
+  return `food_journal_pantry_v1_${uid}`;
+}
 
 export function getStoredRecipes(): Recipe[] {
   try {
@@ -32,18 +40,18 @@ export function saveStoredRecipes(recipes: Recipe[]): void {
   }
 }
 
-export function getPantryCheckedIds(): Record<string, boolean> {
+export function getPantryCheckedIds(user?: UserProfile | null): Record<string, boolean> {
   try {
-    const raw = localStorage.getItem(PANTRY_CHECKED_KEY);
+    const raw = localStorage.getItem(getPantryCheckedKey(user));
     return raw ? JSON.parse(raw) : {};
   } catch {
     return {};
   }
 }
 
-export function savePantryCheckedIds(checked: Record<string, boolean>): void {
+export function savePantryCheckedIds(checked: Record<string, boolean>, user?: UserProfile | null): void {
   try {
-    localStorage.setItem(PANTRY_CHECKED_KEY, JSON.stringify(checked));
+    localStorage.setItem(getPantryCheckedKey(user), JSON.stringify(checked));
   } catch (err) {
     console.error('Failed to save pantry state', err);
   }
@@ -51,9 +59,16 @@ export function savePantryCheckedIds(checked: Record<string, boolean>): void {
 
 /**
  * Compresses an image file (e.g. from camera or phone) to lightweight base64
- * Max dimension 1200px, 0.82 quality, ensuring it stays compact in local storage
+ * Enforces 15MB raw upload limit and MIME validation before canvas decoding
  */
 export async function compressImageFile(file: File, maxDimension = 1200, quality = 0.82): Promise<string> {
+  if (file.size > MAX_RAW_IMAGE_BYTES) {
+    throw new Error('图片原图超过 15MB 上限，请先裁剪或选择更清晰轻量的照片');
+  }
+  if (file.type && !file.type.startsWith('image/')) {
+    throw new Error('请选择有效的图片文件格式（JPG / PNG / WebP）');
+  }
+
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (readerEvent) => {
@@ -88,10 +103,10 @@ export async function compressImageFile(file: File, maxDimension = 1200, quality
         const dataUrl = canvas.toDataURL('image/jpeg', quality);
         resolve(dataUrl);
       };
-      img.onerror = () => reject(new Error('Image failed to load'));
+      img.onerror = () => reject(new Error('图片解码失败（HEIC 等特殊格式请先转为 JPG/PNG）'));
       img.src = readerEvent.target?.result as string;
     };
-    reader.onerror = () => reject(new Error('File reading error'));
+    reader.onerror = () => reject(new Error('读取图片文件失败'));
     reader.readAsDataURL(file);
   });
 }

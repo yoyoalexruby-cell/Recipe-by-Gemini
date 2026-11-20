@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   CARTOON_CHEF_AVATARS, 
   AVATAR_FRAMES, 
@@ -51,6 +51,13 @@ export const AvatarPickerModal: React.FC<AvatarPickerModalProps> = ({
   const [unlockedIds, setUnlockedIds] = useState<string[]>(() => getUnlockedAvatarIds());
   const [confirmRedeemItem, setConfirmRedeemItem] = useState<AvatarOption | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setUnlockedIds(getUnlockedAvatarIds());
+      setActiveFrameId(currentFrameId || getEquippedFrameId());
+    }
+  }, [isOpen, currentFrameId]);
 
   // Filtered avatars
   const filteredAvatars = useMemo(() => {

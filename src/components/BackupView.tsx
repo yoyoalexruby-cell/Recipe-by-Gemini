@@ -8,7 +8,10 @@ import {
 } from '../utils/multiUserStorage';
 import {
   CURRENT_BACKUP_VERSION,
+  MAX_IMPORT_FILE_BYTES,
+  MAX_INLINE_MEDIA_BACKUP_BYTES,
   downloadFullBackupJson,
+  estimateBackupMediaSize,
   restoreFullBackupBundle,
 } from '../utils/fullBackupService';
 import { estimateTotalStorageUsage, StorageHealthMetrics } from '../utils/mediaStorage';
@@ -55,7 +58,7 @@ export const BackupView: React.FC<BackupViewProps> = ({
   onOpenInstall,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const gitHubConfig = getGitHubConfig();
+  const gitHubConfig = getGitHubConfig(currentUser);
 
   const [banner, setBanner] = useState<{
     type: 'success' | 'error' | 'info';
@@ -63,7 +66,13 @@ export const BackupView: React.FC<BackupViewProps> = ({
   } | null>(null);
   const [confirmingReset, setConfirmingReset] = useState(false);
   const [storageMetrics, setStorageMetrics] = useState<StorageHealthMetrics | null>(null);
-  const [includeMediaBlobs, setIncludeMediaBlobs] = useState(true);
+  const [mediaEstimate, setMediaEstimate] = useState<{
+    mediaCount: number;
+    rawBytes: number;
+    estimatedJsonBytes: number;
+    exceedsSafeLimit: boolean;
+  } | null>(null);
+  const [includeMediaBlobs, setIncludeMediaBlobs] = useState(false);
   const [remapToCurrentAccount, setRemapToCurrentAccount] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -72,7 +81,10 @@ export const BackupView: React.FC<BackupViewProps> = ({
     estimateTotalStorageUsage()
       .then(setStorageMetrics)
       .catch(() => {});
-  }, []);
+    estimateBackupMediaSize(currentUser)
+      .then(setMediaEstimate)
+      .catch(() => {});
+  }, [currentUser]);
 
   useEffect(() => {
     refreshStorageMetrics();
@@ -115,6 +127,17 @@ export const BackupView: React.FC<BackupViewProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (file.size > MAX_IMPORT_FILE_BYTES) {
+      showBanner(
+        'error',
+        `备份文件体积过大（${formatBytes(file.size)}），超过 ${formatBytes(MAX_IMPORT_FILE_BYTES)} 导入上限，为防止浏览器内存溢出已拦截读取。`
+      );
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
+    }
+
     setIsImporting(true);
     const reader = new FileReader();
     reader.onload = async (event) => {
@@ -132,6 +155,11 @@ export const BackupView: React.FC<BackupViewProps> = ({
           showBanner(
             'error',
             `写入主存储 (${BACKUP_STORAGE_KEY}) 失败：超出浏览器 localStorage 容量上限，请清理超大图文后重试。`
+          );
+        } else if (res.domainStatus.failedDomains.length > 0) {
+          showBanner(
+            'info',
+            `部分数据恢复成功（新增 ${res.addedRecipes} 道、更新 ${res.updatedRecipes} 道食谱），但以下数据域因容量或格式受限未完全写入：${res.domainStatus.failedDomains.join('、')}。`
           );
         } else if (res.addedRecipes === 0 && res.updatedRecipes === 0) {
           showBanner(
@@ -372,15 +400,26 @@ export const BackupView: React.FC<BackupViewProps> = ({
             <p className="text-xs text-[#7A7268] leading-relaxed mb-3">
               打包食谱、烹饪日历、分类、采购偏好、收藏、成就及可选离线视频包。
             </p>
-            <label className="flex items-start gap-2 text-[11px] text-[#5A5248] mb-3 cursor-pointer select-none">
+            <label className="flex items-start gap-2 text-[11px] text-[#5A5248] mb-2 cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={includeMediaBlobs}
+                disabled={Boolean(mediaEstimate?.exceedsSafeLimit)}
                 onChange={(e) => setIncludeMediaBlobs(e.target.checked)}
                 className="mt-0.5 accent-[#C85A32] rounded"
               />
-              <span>包含 IndexedDB 离线视频包（跨设备完整还原）</span>
+              <span>
+                附带内嵌离线视频包
+                {mediaEstimate && mediaEstimate.mediaCount > 0
+                  ? `（${mediaEstimate.mediaCount} 段，预计约 ${formatBytes(mediaEstimate.estimatedJsonBytes)}）`
+                  : '（当前无离线视频）'}
+              </span>
             </label>
+            {mediaEstimate?.exceedsSafeLimit && (
+              <p className="text-[10px] text-amber-700 mb-3 leading-snug">
+                当前视频超过 {formatBytes(MAX_INLINE_MEDIA_BACKUP_BYTES)} 内嵌安全上限，已自动切换为轻量化文本备份以保护移动端内存。
+              </p>
+            )}
           </div>
           <button
             type="button"

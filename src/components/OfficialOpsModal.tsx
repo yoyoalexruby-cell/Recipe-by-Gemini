@@ -17,7 +17,8 @@ import {
 import {
   loginAsOfficialEditorial,
   logoutUser,
-  verifyOfficialOperatorSession
+  verifyOfficialOperatorSession,
+  verifyOfficialOperatorOrLogout,
 } from '../utils/authService';
 import { formatLocalDate } from '../utils/dateUtils';
 import {
@@ -142,13 +143,24 @@ export const OfficialOpsModal: React.FC<OfficialOpsModalProps> = ({
     setTimeout(() => setFeedbackBanner(null), 3200);
   };
 
-  const requireOperatorAuth = (): boolean => {
+  const requireOperatorAuth = async (): Promise<boolean> => {
     if (!isOfficialLoggedIn) {
       setActiveTab('editorial');
       setAuthError(
         language === 'zh-CN'
           ? '此项操作需要通过服务端验证的「官方主厨」权限，请先输入服务端运营口令解锁。'
           : 'Server-verified Official Operator authentication is required for this action.'
+      );
+      return false;
+    }
+    const valid = await verifyOfficialOperatorOrLogout();
+    if (!valid) {
+      setServerSessionValid(false);
+      setActiveTab('editorial');
+      setAuthError(
+        language === 'zh-CN'
+          ? '官方运营会话已失效，已安全退出官方身份，请重新验证口令。'
+          : 'Official operator session expired; please re-authenticate.'
       );
       return false;
     }
@@ -176,16 +188,16 @@ export const OfficialOpsModal: React.FC<OfficialOpsModalProps> = ({
     }
   };
 
-  const handleTogglePinMenu = (menuId: string) => {
-    if (!requireOperatorAuth()) return;
+  const handleTogglePinMenu = async (menuId: string) => {
+    if (!(await requireOperatorAuth())) return;
     const updated = menus.map((m) => (m.id === menuId ? { ...m, pinned: !m.pinned } : m));
     setMenus(updated);
     saveOfficialCuratedMenus(updated);
     onMenusUpdated();
   };
 
-  const handleDeleteMenu = (menuId: string) => {
-    if (!requireOperatorAuth()) return;
+  const handleDeleteMenu = async (menuId: string) => {
+    if (!(await requireOperatorAuth())) return;
     const updated = menus.filter((m) => m.id !== menuId);
     setMenus(updated);
     saveOfficialCuratedMenus(updated);
@@ -193,9 +205,9 @@ export const OfficialOpsModal: React.FC<OfficialOpsModalProps> = ({
     showToast(language === 'zh-CN' ? '已移除该主题菜单' : 'Menu removed');
   };
 
-  const handleCreateMenuSubmit = (e: React.FormEvent) => {
+  const handleCreateMenuSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!requireOperatorAuth()) return;
+    if (!(await requireOperatorAuth())) return;
     if (!newMenuTitle.trim() || selectedRecipeIds.length === 0) {
       showToast(language === 'zh-CN' ? '请填写菜单标题并至少勾选 1 道食谱' : 'Enter title and select at least 1 recipe');
       return;
@@ -520,8 +532,8 @@ export const OfficialOpsModal: React.FC<OfficialOpsModalProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => {
-                      if (!requireOperatorAuth()) return;
+                    onClick={async () => {
+                      if (!(await requireOperatorAuth())) return;
                       const next = !autoRotation;
                       setAutoRotation(next);
                       setAutoMenuRotationEnabled(next);
@@ -591,8 +603,8 @@ export const OfficialOpsModal: React.FC<OfficialOpsModalProps> = ({
                 </p>
                 <button
                   type="button"
-                  onClick={() => {
-                    if (!requireOperatorAuth()) return;
+                  onClick={async () => {
+                    if (!(await requireOperatorAuth())) return;
                     setIsCreatingMenu(!isCreatingMenu);
                   }}
                   className="px-3.5 py-2 bg-[#C85A32] hover:bg-[#B34C26] text-white text-xs font-bold rounded-lg transition-colors inline-flex items-center gap-1.5 shrink-0"
@@ -849,8 +861,8 @@ export const OfficialOpsModal: React.FC<OfficialOpsModalProps> = ({
                             <div className="flex items-center gap-2 shrink-0">
                               <button
                                 type="button"
-                                onClick={() => {
-                                  if (!requireOperatorAuth()) return;
+                                onClick={async () => {
+                                  if (!(await requireOperatorAuth())) return;
                                   takedownUGCItem(rep.targetId);
                                   showToast(`已从食味广场下架《${rep.targetTitle}》`);
                                 }}
@@ -860,10 +872,10 @@ export const OfficialOpsModal: React.FC<OfficialOpsModalProps> = ({
                               </button>
                               <button
                                 type="button"
-                                onClick={() => {
-                                  if (!requireOperatorAuth()) return;
+                                onClick={async () => {
+                                  if (!(await requireOperatorAuth())) return;
                                   takedownUGCItem(rep.targetId);
-                                  blockUser(rep.authorId, rep.authorName);
+                                  blockUser(rep.authorId, rep.authorName, currentUser);
                                   showToast(`已下架内容并封禁作者「${rep.authorName}」`);
                                 }}
                                 className="px-3 py-1.5 bg-[#2C2723] hover:bg-black text-white text-xs font-semibold rounded-lg transition-colors"
@@ -872,8 +884,8 @@ export const OfficialOpsModal: React.FC<OfficialOpsModalProps> = ({
                               </button>
                               <button
                                 type="button"
-                                onClick={() => {
-                                  if (!requireOperatorAuth()) return;
+                                onClick={async () => {
+                                  if (!(await requireOperatorAuth())) return;
                                   dismissUGCReport(idx);
                                   showToast('已标记为误报并归档');
                                 }}
@@ -894,9 +906,9 @@ export const OfficialOpsModal: React.FC<OfficialOpsModalProps> = ({
                     <span>当前本机已拉黑/封禁作者 ID：{blockedIds.join(', ')}</span>
                     <button
                       type="button"
-                      onClick={() => {
-                        if (!requireOperatorAuth()) return;
-                        blockedIds.forEach((id) => unblockUser(id));
+                      onClick={async () => {
+                        if (!(await requireOperatorAuth())) return;
+                        blockedIds.forEach((id) => unblockUser(id, currentUser));
                         showToast('已清空拉黑屏蔽名单');
                       }}
                       className="text-[#C85A32] hover:underline font-medium"

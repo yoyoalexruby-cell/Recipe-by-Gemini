@@ -73,7 +73,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   const [displayName, setDisplayName] = useState(user.displayName);
   const [bio, setBio] = useState(user.bio || '');
   const [avatarUrl, setAvatarUrl] = useState(user.avatarUrl);
-  const [selectedFrame, setSelectedFrame] = useState<string>(() => getEquippedFrameId());
+  const [selectedFrame, setSelectedFrame] = useState<string>(() => getEquippedFrameId(user));
   const [avatarCategory, setAvatarCategory] = useState<'all' | 'cartoon_chef' | 'culinary_creature' | 'chibi_foodie' | 'base_doll'>('all');
   const [isUploading, setIsUploading] = useState(false);
   const [rewardToast, setRewardToast] = useState<string | null>(null);
@@ -98,7 +98,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     return getChefAchievements(user, recipes, levelInfo, totalLikesReceived);
   }, [user, recipes, levelInfo, totalLikesReceived, membershipRevision]);
 
-  const isCheckedIn = checkIsDailyCheckedIn();
+  const isCheckedIn = checkIsDailyCheckedIn(user);
 
   if (!isOpen) return null;
 
@@ -129,8 +129,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   };
 
   // Claim quest reward
-  const handleClaim = (taskId: string, rewardExp: number, title: string) => {
-    const ok = claimTaskReward(taskId);
+  const handleClaim = (taskId: string, rewardExp: number, _title: string) => {
+    const ok = claimTaskReward(taskId, user);
     if (ok) {
       setRewardToast(
         language === 'zh-CN'
@@ -143,7 +143,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 
   // Perform daily check-in
   const handleCheckin = () => {
-    const res = performDailyCheckin();
+    const res = performDailyCheckin(user);
     if (res.success) {
       setRewardToast(
         language === 'zh-CN'
@@ -1214,7 +1214,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
         onSelectAvatar={(newUrl, newFrameId) => {
           setAvatarUrl(newUrl);
           setSelectedFrame(newFrameId);
-          setEquippedFrameId(newFrameId);
+          setEquippedFrameId(newFrameId, user);
           const updated = updateCurrentUserProfile({ avatarUrl: newUrl });
           onUserUpdated(updated);
           setRewardToast(language === 'zh-CN' ? '🎉 头像与边框已成功换装并佩戴！' : 'Avatar & frame equipped!');

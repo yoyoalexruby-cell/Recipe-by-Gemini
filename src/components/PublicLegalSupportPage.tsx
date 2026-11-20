@@ -76,6 +76,7 @@ export const PublicLegalSupportPage: React.FC<PublicLegalSupportPageProps> = ({
       const existing = JSON.parse(localStorage.getItem('culinary_support_tickets_v1') || '[]');
       existing.unshift({
         id: refId,
+        uid: currentUser?.uid || 'guest',
         email: ticketEmail.trim() || 'anonymous',
         topic: ticketTopic,
         message: ticketMessage.trim(),

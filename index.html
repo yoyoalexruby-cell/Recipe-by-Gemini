@@ -96,128 +96,127 @@
         }
       })();
 
-      // 2. Safe WebSocket shim for Vite HMR in cloud preview environment (HMR is disabled in AI Studio iframe)
-      if (typeof window !== 'undefined' && window.WebSocket) {
-        var NativeWebSocket = window.WebSocket;
-        window.WebSocket = function(url, protocols) {
-          var isHmr = false;
-          try {
-            var urlStr = String(url || '');
-            var protoStr = Array.isArray(protocols) ? protocols.join(',') : String(protocols || '');
-            if (
-              protoStr.indexOf('vite-hmr') !== -1 ||
-              urlStr.indexOf('vite') !== -1 ||
-              urlStr.indexOf('ais-dev-') !== -1 ||
-              urlStr.indexOf('localhost') !== -1
-            ) {
-              isHmr = true;
-            }
-          } catch (e) {}
+      // 2. Safe WebSocket shim strictly for Vite HMR on local / AI Studio preview hosts (HMR is disabled in iframe)
+      (function() {
+        var host = (typeof location !== 'undefined' && location.hostname) ? location.hostname : '';
+        var isPreviewHost =
+          host === 'localhost' ||
+          host === '127.0.0.1' ||
+          host.indexOf('ais-dev-') !== -1;
 
-          if (isHmr) {
-            var listeners = {};
-            var dummyWs = {
-              readyState: 1, // WebSocket.OPEN
-              CONNECTING: 0,
-              OPEN: 1,
-              CLOSING: 2,
-              CLOSED: 3,
-              url: String(url || ''),
-              protocol: 'vite-hmr',
-              bufferedAmount: 0,
-              extensions: '',
-              binaryType: 'blob',
-              send: function() {},
-              close: function() {
-                dummyWs.readyState = 3;
-              },
-              addEventListener: function(type, fn) {
-                if (!listeners[type]) listeners[type] = [];
-                listeners[type].push(fn);
-                if (type === 'open') {
-                  setTimeout(function() {
-                    try { fn.call(dummyWs, { type: 'open' }); } catch (err) {}
-                  }, 0);
+        if (isPreviewHost && typeof window !== 'undefined' && window.WebSocket) {
+          var NativeWebSocket = window.WebSocket;
+          window.WebSocket = function(url, protocols) {
+            var isViteHmr = false;
+            try {
+              var urlStr = String(url || '');
+              var protoStr = Array.isArray(protocols) ? protocols.join(',') : String(protocols || '');
+              isViteHmr =
+                protoStr.indexOf('vite-hmr') !== -1 ||
+                urlStr.indexOf('__vite_ping') !== -1 ||
+                urlStr.indexOf('vite-hmr') !== -1;
+            } catch (_e) {}
+
+            if (isViteHmr) {
+              var listeners = {};
+              var dummyWs = {
+                readyState: 1,
+                CONNECTING: 0,
+                OPEN: 1,
+                CLOSING: 2,
+                CLOSED: 3,
+                url: String(url || ''),
+                protocol: 'vite-hmr',
+                bufferedAmount: 0,
+                extensions: '',
+                binaryType: 'blob',
+                send: function() {},
+                close: function() {
+                  dummyWs.readyState = 3;
+                },
+                addEventListener: function(type, fn) {
+                  if (!listeners[type]) listeners[type] = [];
+                  listeners[type].push(fn);
+                  if (type === 'open') {
+                    setTimeout(function() {
+                      try { fn.call(dummyWs, { type: 'open' }); } catch (_err) {}
+                    }, 0);
+                  }
+                },
+                removeEventListener: function(type, fn) {
+                  if (!listeners[type]) return;
+                  listeners[type] = listeners[type].filter(function(cb) { return cb !== fn; });
+                },
+                dispatchEvent: function() { return true; },
+                onopen: null,
+                onclose: null,
+                onerror: null,
+                onmessage: null
+              };
+              setTimeout(function() {
+                if (typeof dummyWs.onopen === 'function') {
+                  try { dummyWs.onopen.call(dummyWs, { type: 'open' }); } catch (_err) {}
                 }
-              },
-              removeEventListener: function(type, fn) {
-                if (!listeners[type]) return;
-                listeners[type] = listeners[type].filter(function(cb) { return cb !== fn; });
-              },
-              dispatchEvent: function() { return true; },
-              onopen: null,
-              onclose: null,
-              onerror: null,
-              onmessage: null
-            };
-            setTimeout(function() {
-              if (typeof dummyWs.onopen === 'function') {
-                try { dummyWs.onopen.call(dummyWs, { type: 'open' }); } catch (err) {}
-              }
-            }, 0);
-            return dummyWs;
+              }, 0);
+              return dummyWs;
+            }
+            return new NativeWebSocket(url, protocols);
+          };
+          window.WebSocket.prototype = NativeWebSocket.prototype;
+          window.WebSocket.CONNECTING = 0;
+          window.WebSocket.OPEN = 1;
+          window.WebSocket.CLOSING = 2;
+          window.WebSocket.CLOSED = 3;
+        }
+
+        // 3. Narrow suppression strictly for third-party wallet extension noise and Vite HMR disconnects on preview hosts
+        if (isPreviewHost) {
+          var _origConsoleError = console.error;
+          console.error = function() {
+            var args = Array.prototype.slice.call(arguments);
+            var text = args.map(function(a) { return (a && a.stack) ? String(a.stack) : String(a || ''); }).join(' ');
+            if (
+              text.indexOf('WebSocket closed without opened') !== -1 ||
+              (text.indexOf('WebSocket') !== -1 && text.indexOf('vite-hmr') !== -1) ||
+              text.indexOf('Cannot redefine property: ethereum') !== -1 ||
+              text.indexOf('chrome-extension://') !== -1
+            ) {
+              return;
+            }
+            _origConsoleError.apply(console, args);
+          };
+        }
+
+        function isIgnorableExtensionOrHmrError(msg, src) {
+          var m = String(msg || '');
+          var s = String(src || '');
+          if (s.indexOf('chrome-extension://') !== -1 || s.indexOf('moz-extension://') !== -1) {
+            return true;
           }
-          return new NativeWebSocket(url, protocols);
-        };
-        window.WebSocket.prototype = NativeWebSocket.prototype;
-        window.WebSocket.CONNECTING = 0;
-        window.WebSocket.OPEN = 1;
-        window.WebSocket.CLOSING = 2;
-        window.WebSocket.CLOSED = 3;
-      }
-
-      // 3. Suppress console.error / console.warn for ignorable WebSocket HMR and extension noise
-      var _origConsoleError = console.error;
-      console.error = function() {
-        var args = Array.prototype.slice.call(arguments);
-        var text = args.map(function(a) { return (a && a.stack) ? String(a.stack) : String(a || ''); }).join(' ');
-        if (
-          text.indexOf('WebSocket closed without opened') !== -1 ||
-          (text.indexOf('WebSocket') !== -1 && text.indexOf('vite') !== -1) ||
-          text.indexOf('Cannot redefine property: ethereum') !== -1 ||
-          text.indexOf('chrome-extension://') !== -1
-        ) {
-          return;
+          if (m.indexOf('Cannot redefine property') !== -1 && m.indexOf('ethereum') !== -1) {
+            return true;
+          }
+          if (isPreviewHost && (m.indexOf('vite:ws') !== -1 || m.indexOf('vite-hmr') !== -1)) {
+            return true;
+          }
+          return false;
         }
-        _origConsoleError.apply(console, args);
-      };
 
-      // 4. Suppress extension errors and WebSocket HMR disconnects in window error events
-      function isIgnorableError(msg, src) {
-        var m = String(msg || '');
-        var s = String(src || '');
-        return (
-          s.indexOf('chrome-extension://') !== -1 ||
-          s.indexOf('moz-extension://') !== -1 ||
-          m.indexOf('ethereum') !== -1 ||
-          m.indexOf('Cannot redefine property') !== -1 ||
-          m.indexOf('WebSocket') !== -1 ||
-          m.indexOf("reading 'send'") !== -1 ||
-          m.indexOf('vite:ws') !== -1
-        );
-      }
+        window.addEventListener('error', function(event) {
+          if (isIgnorableExtensionOrHmrError(event.message || (event.error && event.error.message), event.filename)) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }
+        }, true);
 
-      window.addEventListener('error', function(event) {
-        if (isIgnorableError(event.message || event.error?.message, event.filename)) {
-          event.preventDefault();
-          event.stopImmediatePropagation();
-          return true;
-        }
-      }, true);
-
-      window.addEventListener('unhandledrejection', function(event) {
-        var msg = event?.reason?.message || String(event?.reason || '');
-        if (isIgnorableError(msg, '')) {
-          event.preventDefault();
-          event.stopImmediatePropagation();
-        }
-      }, true);
-
-      window.onerror = function(msg, url) {
-        if (isIgnorableError(msg, url)) {
-          return true;
-        }
-      };
+        window.addEventListener('unhandledrejection', function(event) {
+          var msg = (event && event.reason && event.reason.message) ? event.reason.message : String((event && event.reason) || '');
+          if (isIgnorableExtensionOrHmrError(msg, '')) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }
+        }, true);
+      })();
     </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>食味手记 - 私房烹饪手帐</title>

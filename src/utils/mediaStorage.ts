@@ -207,6 +207,40 @@ export async function deleteMultipleMediaFromIDB(uris: string[]): Promise<void> 
 }
 
 /**
+ * 预估指定 URI 集合对应的 IndexedDB 媒体原始字节大小（不进行 Base64 转换，避免移动端内存峰值）
+ */
+export async function estimateMediaBytesForUris(
+  uris: string[]
+): Promise<{ mediaCount: number; rawBytes: number }> {
+  const idbUris = uris.filter((u) => u.startsWith(IDB_URI_PREFIX));
+  if (idbUris.length === 0) return { mediaCount: 0, rawBytes: 0 };
+
+  let mediaCount = 0;
+  let rawBytes = 0;
+  try {
+    const db = await openMediaDB();
+    for (const uri of idbUris) {
+      const id = uri.slice(IDB_URI_PREFIX.length);
+      const record = await new Promise<StoredMediaRecord | undefined>((resolve) => {
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        const store = tx.objectStore(STORE_NAME);
+        const req = store.get(id);
+        req.onsuccess = () => resolve(req.result as StoredMediaRecord | undefined);
+        req.onerror = () => resolve(undefined);
+      });
+      if (record) {
+        mediaCount++;
+        rawBytes += record.size || record.blob?.size || 0;
+      }
+    }
+    db.close();
+  } catch (err) {
+    console.warn('估算 IndexedDB 媒体大小异常:', err);
+  }
+  return { mediaCount, rawBytes };
+}
+
+/**
  * 导出指定 URI 集合对应的 IndexedDB 媒体为可跨设备迁移的 Base64 字典
  */
 export async function exportMediaBlobsForUris(

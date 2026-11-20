@@ -1,7 +1,14 @@
 import React, { useState, useEffect, useMemo, useRef, Suspense, lazy } from 'react';
 import { Recipe } from './types/recipe';
 import { UserProfile } from './types/auth';
-import { getCurrentUser, deleteCurrentUserAccount, CURRENT_USER_KEY } from './utils/authService';
+import {
+  getCurrentUser,
+  deleteCurrentUserAccount,
+  verifyOfficialOperatorOrLogout,
+  isOfficialUser,
+  CURRENT_USER_KEY,
+} from './utils/authService';
+import { OFFICIAL_ACCOUNT_UID } from './data/officialSquareSeed';
 import { 
   MASTER_RECIPES_KEY,
   getUserRecipes, 
@@ -145,10 +152,33 @@ export default function App() {
     return null;
   });
 
-  // GitHub Auto-Sync Config
-  const [githubConfig, setGithubConfig] = useState<GitHubConfig>(() => getGitHubConfig());
+  // GitHub Auto-Sync Config (isolated per user UID)
+  const [githubConfig, setGithubConfig] = useState<GitHubConfig>(() => getGitHubConfig(currentUser));
   const [syncToast, setSyncToast] = useState<string | null>(null);
   const isFirstRender = useRef(true);
+
+  useEffect(() => {
+    setGithubConfig(getGitHubConfig(currentUser));
+  }, [currentUser?.uid]);
+
+  // Verify Official Operator token against backend whenever active user is the Official Chef
+  useEffect(() => {
+    if (!isOfficialUser(currentUser)) return;
+    let cancelled = false;
+    verifyOfficialOperatorOrLogout().then((valid) => {
+      if (!cancelled && !valid) {
+        setSyncToast(
+          language === 'zh-CN'
+            ? '官方运营令牌已过期或未授权，已自动退出官方身份'
+            : 'Official operator session expired or invalid; signed out'
+        );
+        setTimeout(() => setSyncToast(null), 4000);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser?.uid, language]);
 
   // Kitchen Timer State
   const [timerState, setTimerState] = useState<{ isOpen: boolean; minutes: number; label: string } | null>(null);
@@ -307,7 +337,8 @@ export default function App() {
               lastSyncedAt: new Date().toLocaleString('zh-CN'),
               lastCommitSha: res.commitSha,
             };
-            saveGitHubConfig(updatedCfg);
+            saveGitHubConfig(updatedCfg, currentUser);
+            setGithubConfig(updatedCfg);
             setSyncToast(`已自动合并备份至 GitHub (${res.commitSha})`);
             setTimeout(() => setSyncToast(null), 3000);
           }
@@ -316,10 +347,23 @@ export default function App() {
     }, 3000);
 
     return () => window.clearTimeout(timer);
-  }, [recipes, githubConfig.autoSync, githubConfig.token, githubConfig.owner, githubConfig.repo, githubConfig.branch]);
+  }, [recipes, currentUser?.uid, githubConfig.autoSync, githubConfig.token, githubConfig.owner, githubConfig.repo, githubConfig.branch]);
 
-  // Handle Save Recipe (with Apple Guideline 1.2 UGC safety filter + localStorage quota persistence verification)
-  const handleSaveRecipe = (recipe: Recipe): boolean => {
+  // Handle Save Recipe (with server-session re-verification for Official Chef + UGC safety filter + quota verification)
+  const handleSaveRecipe = async (recipe: Recipe): Promise<boolean> => {
+    if (isOfficialUser(currentUser) || recipe.ownerId === OFFICIAL_ACCOUNT_UID) {
+      const valid = await verifyOfficialOperatorOrLogout();
+      if (!valid) {
+        setSyncToast(
+          language === 'zh-CN'
+            ? '官方运营会话已失效，已安全退出官方身份，请重新验证后再以官方身份发布'
+            : 'Official operator session invalid; please re-authenticate'
+        );
+        setTimeout(() => setSyncToast(null), 5000);
+        return false;
+      }
+    }
+
     let recipeToSave = recipe;
     let blockedReason: string | null = null;
 
@@ -442,11 +486,23 @@ export default function App() {
     }
   };
 
-  // Handle Add Comment (with pre-publish UGC content safety filter)
-  const handleAddComment = (recipeId: string, content: string) => {
+  // Handle Add Comment (with server-session re-verification for Official Chef + UGC safety filter)
+  const handleAddComment = async (recipeId: string, content: string) => {
     if (!currentUser) {
       setIsAuthModalOpen(true);
       return;
+    }
+    if (isOfficialUser(currentUser)) {
+      const valid = await verifyOfficialOperatorOrLogout();
+      if (!valid) {
+        setSyncToast(
+          language === 'zh-CN'
+            ? '官方运营会话已失效，已安全退出官方身份'
+            : 'Official operator session invalid; signed out'
+        );
+        setTimeout(() => setSyncToast(null), 4500);
+        return;
+      }
     }
     const audit = auditUGCContentSafety([content]);
     if (!audit.passed) {
@@ -530,14 +586,14 @@ export default function App() {
   };
 
   const handleExportAllData = () => {
-    downloadFullBackupJson(currentUser, { includeMediaBlobs: true })
-      .then(({ recipeCount, mediaCount, cookingLogCount }) => {
+    downloadFullBackupJson(currentUser, { includeMediaBlobs: false })
+      .then(({ recipeCount, cookingLogCount }) => {
         setSyncToast(
           language === 'zh-CN'
-            ? `已导出全量个人数据（${recipeCount}篇食谱、${cookingLogCount}条日历打卡、${mediaCount}段离线视频）`
-            : `Exported full personal archive (${recipeCount} recipes, ${cookingLogCount} logs, ${mediaCount} media clips)`
+            ? `已导出轻量全量数据（${recipeCount}篇食谱、${cookingLogCount}条日历打卡；如需打包离线视频请前往备份页勾选）`
+            : `Exported personal archive (${recipeCount} recipes, ${cookingLogCount} logs)`
         );
-        setTimeout(() => setSyncToast(null), 4000);
+        setTimeout(() => setSyncToast(null), 4500);
       })
       .catch((err) => {
         console.error('Export failed', err);
@@ -668,8 +724,8 @@ export default function App() {
             }}
             onDelete={handleDeleteRecipe}
             onShare={(rec) => setSharingRecipe(rec)}
-            onUpdateRecipe={(updated) => {
-              const ok = handleSaveRecipe(updated);
+            onUpdateRecipe={async (updated) => {
+              const ok = await handleSaveRecipe(updated);
               if (ok) {
                 setSelectedRecipe(updated);
               }
@@ -1091,6 +1147,7 @@ export default function App() {
       <GitHubSyncModal
         isOpen={isGitHubModalOpen}
         recipes={recipes}
+        currentUser={currentUser}
         onClose={() => setIsGitHubModalOpen(false)}
         onConfigUpdated={(cfg) => setGithubConfig(cfg)}
       />

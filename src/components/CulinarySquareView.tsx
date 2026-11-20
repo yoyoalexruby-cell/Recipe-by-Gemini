@@ -87,10 +87,12 @@ export const CulinarySquareView: React.FC<CulinarySquareViewProps> = ({
       setRotationRevision((p) => p + 1);
     };
     window.addEventListener('ugc-moderation-updated', handleMod);
+    window.addEventListener('auth-state-changed', handleMod);
     window.addEventListener('square-bookmarks-updated', handleBm);
     window.addEventListener('official-menus-updated', handleMenus);
     return () => {
       window.removeEventListener('ugc-moderation-updated', handleMod);
+      window.removeEventListener('auth-state-changed', handleMod);
       window.removeEventListener('square-bookmarks-updated', handleBm);
       window.removeEventListener('official-menus-updated', handleMenus);
     };
@@ -126,7 +128,7 @@ export const CulinarySquareView: React.FC<CulinarySquareViewProps> = ({
     : [];
 
   // Filter recipes (including Apple Guideline 1.2 Blocked Users Exclusion)
-  const blockedUserIds = getBlockedUserIds();
+  const blockedUserIds = getBlockedUserIds(currentUser);
   const filtered = recipes.filter((r) => {
     // Hide content from blocked users
     if (r.ownerId && blockedUserIds.includes(r.ownerId)) return false;

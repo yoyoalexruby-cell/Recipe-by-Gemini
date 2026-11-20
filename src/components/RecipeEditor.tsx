@@ -15,7 +15,7 @@ import { saveMediaBlobToIDB, deleteMediaFromIDB, MAX_VIDEO_SIZE_BYTES } from '..
 
 interface RecipeEditorProps {
   initialRecipe?: Recipe | null;
-  onSave: (recipe: Recipe) => void;
+  onSave: (recipe: Recipe) => void | boolean | Promise<boolean>;
   onCancel: () => void;
   currentUser?: UserProfile | null;
   onStartTimer?: (minutes: number, label: string) => void;

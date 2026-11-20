@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Recipe } from '../types/recipe';
+import { UserProfile } from '../types/auth';
 import {
   GitHubConfig,
   getGitHubConfig,
@@ -24,6 +25,7 @@ import {
 interface GitHubSyncModalProps {
   isOpen: boolean;
   recipes: Recipe[];
+  currentUser?: UserProfile | null;
   onClose: () => void;
   onConfigUpdated: (config: GitHubConfig) => void;
 }
@@ -31,10 +33,11 @@ interface GitHubSyncModalProps {
 export const GitHubSyncModal: React.FC<GitHubSyncModalProps> = ({
   isOpen,
   recipes,
+  currentUser,
   onClose,
   onConfigUpdated,
 }) => {
-  const [config, setConfig] = useState<GitHubConfig>(() => getGitHubConfig());
+  const [config, setConfig] = useState<GitHubConfig>(() => getGitHubConfig(currentUser));
   const [isTesting, setIsTesting] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{
@@ -42,6 +45,13 @@ export const GitHubSyncModal: React.FC<GitHubSyncModalProps> = ({
     text: string;
   } | null>(null);
   const [copiedCli, setCopiedCli] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setConfig(getGitHubConfig(currentUser));
+      setStatusMessage(null);
+    }
+  }, [isOpen, currentUser?.uid]);
 
   if (!isOpen) return null;
 
@@ -52,7 +62,7 @@ export const GitHubSyncModal: React.FC<GitHubSyncModalProps> = ({
     setIsTesting(false);
     if (res.success) {
       setStatusMessage({ type: 'success', text: res.message });
-      saveGitHubConfig(config);
+      saveGitHubConfig(config, currentUser);
       onConfigUpdated(config);
     } else {
       setStatusMessage({ type: 'error', text: res.message });
@@ -71,7 +81,7 @@ export const GitHubSyncModal: React.FC<GitHubSyncModalProps> = ({
         lastCommitSha: res.commitSha,
       };
       setConfig(updatedConfig);
-      saveGitHubConfig(updatedConfig);
+      saveGitHubConfig(updatedConfig, currentUser);
       onConfigUpdated(updatedConfig);
       setStatusMessage({ type: 'success', text: res.message });
     } else {
@@ -82,7 +92,7 @@ export const GitHubSyncModal: React.FC<GitHubSyncModalProps> = ({
   const handleToggleAutoSync = (checked: boolean) => {
     const updated = { ...config, autoSync: checked };
     setConfig(updated);
-    saveGitHubConfig(updated);
+    saveGitHubConfig(updated, currentUser);
     onConfigUpdated(updated);
   };
 

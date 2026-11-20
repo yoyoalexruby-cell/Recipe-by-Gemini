@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Recipe } from '../types/recipe';
 import { ShoppingBag, CheckCircle2, Circle, Copy, Plus, Trash2, Check, Sparkles } from 'lucide-react';
 import { getPantryCheckedIds, savePantryCheckedIds } from '../utils/storage';
@@ -20,6 +20,12 @@ export const IngredientsPantryView: React.FC<IngredientsPantryViewProps> = ({
   );
 
   const [checkedIds, setCheckedIds] = useState<Record<string, boolean>>(() => getPantryCheckedIds());
+
+  useEffect(() => {
+    const syncPantry = () => setCheckedIds(getPantryCheckedIds());
+    window.addEventListener('auth-state-changed', syncPantry);
+    return () => window.removeEventListener('auth-state-changed', syncPantry);
+  }, []);
   const [extraItems, setExtraItems] = useState<Array<{ id: string; name: string; amount: string; checked: boolean }>>([
     { id: 'ext-1', name: '厨房吸油纸', amount: '1卷', checked: false },
     { id: 'ext-2', name: '黄油', amount: '200g', checked: true }

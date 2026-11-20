@@ -234,10 +234,14 @@ export function saveUserRecipeWithStatus(
   const ownerId = currentUser ? currentUser.uid : 'guest';
   const authorName = currentUser ? currentUser.displayName : '匿名大厨';
   const authorAvatar = currentUser ? currentUser.avatarUrl : undefined;
+  const resolvedOwnerId =
+    recipe.ownerId === OFFICIAL_SEED_RECIPES[0]?.ownerId && currentUser?.uid !== OFFICIAL_SEED_RECIPES[0]?.ownerId
+      ? ownerId
+      : recipe.ownerId || ownerId;
 
   const enrichedRecipe: Recipe = {
     ...recipe,
-    ownerId: recipe.ownerId || ownerId,
+    ownerId: resolvedOwnerId,
     authorName: recipe.authorName || authorName,
     authorAvatar: recipe.authorAvatar || authorAvatar,
     isPublic: recipe.isPublic ?? false,

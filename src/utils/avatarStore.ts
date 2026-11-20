@@ -3,8 +3,18 @@
  * Manages unlocked avatars, equipped frames, and extensible points redemption.
  */
 
-const UNLOCKED_AVATARS_STORAGE_KEY = 'chef_unlocked_avatar_ids';
-const EQUIPPED_FRAME_STORAGE_KEY = 'chef_equipped_avatar_frame';
+import { UserProfile } from '../types/auth';
+import { getCurrentUser } from './authService';
+
+export function getUnlockedAvatarsKey(user?: UserProfile | null): string {
+  const uid = (user !== undefined ? user?.uid : getCurrentUser()?.uid) || 'guest';
+  return `chef_unlocked_avatar_ids_${uid}`;
+}
+
+export function getEquippedFrameKey(user?: UserProfile | null): string {
+  const uid = (user !== undefined ? user?.uid : getCurrentUser()?.uid) || 'guest';
+  return `chef_equipped_avatar_frame_${uid}`;
+}
 
 // Default unlocked avatar IDs (all free common ones)
 const DEFAULT_UNLOCKED_AVATARS = [
@@ -31,9 +41,9 @@ const DEFAULT_UNLOCKED_AVATARS = [
 /**
  * Returns list of unlocked avatar IDs
  */
-export function getUnlockedAvatarIds(): string[] {
+export function getUnlockedAvatarIds(user?: UserProfile | null): string[] {
   try {
-    const raw = localStorage.getItem(UNLOCKED_AVATARS_STORAGE_KEY);
+    const raw = localStorage.getItem(getUnlockedAvatarsKey(user));
     if (!raw) return DEFAULT_UNLOCKED_AVATARS;
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
@@ -50,20 +60,20 @@ export function getUnlockedAvatarIds(): string[] {
 /**
  * Checks if an avatar ID is unlocked
  */
-export function isAvatarUnlocked(avatarId: string): boolean {
-  const unlocked = getUnlockedAvatarIds();
+export function isAvatarUnlocked(avatarId: string, user?: UserProfile | null): boolean {
+  const unlocked = getUnlockedAvatarIds(user);
   return unlocked.includes(avatarId);
 }
 
 /**
  * Unlocks an avatar using points / level progression
  */
-export function unlockAvatar(avatarId: string): boolean {
+export function unlockAvatar(avatarId: string, user?: UserProfile | null): boolean {
   try {
-    const unlocked = getUnlockedAvatarIds();
+    const unlocked = getUnlockedAvatarIds(user);
     if (!unlocked.includes(avatarId)) {
       const nextList = [...unlocked, avatarId];
-      localStorage.setItem(UNLOCKED_AVATARS_STORAGE_KEY, JSON.stringify(nextList));
+      localStorage.setItem(getUnlockedAvatarsKey(user), JSON.stringify(nextList));
       window.dispatchEvent(new CustomEvent('avatars-updated', { detail: { unlocked: nextList } }));
       return true;
     }
@@ -77,10 +87,10 @@ export function unlockAvatar(avatarId: string): boolean {
 /**
  * Returns equipped avatar frame ID
  */
-export function getEquippedFrameId(): string {
+export function getEquippedFrameId(user?: UserProfile | null): string {
   try {
-    return localStorage.getItem(EQUIPPED_FRAME_STORAGE_KEY) || 'frame_none';
-  } catch (e) {
+    return localStorage.getItem(getEquippedFrameKey(user)) || 'frame_none';
+  } catch {
     return 'frame_none';
   }
 }
@@ -88,9 +98,9 @@ export function getEquippedFrameId(): string {
 /**
  * Sets equipped avatar frame ID
  */
-export function setEquippedFrameId(frameId: string): void {
+export function setEquippedFrameId(frameId: string, user?: UserProfile | null): void {
   try {
-    localStorage.setItem(EQUIPPED_FRAME_STORAGE_KEY, frameId);
+    localStorage.setItem(getEquippedFrameKey(user), frameId);
     window.dispatchEvent(new CustomEvent('avatar-frame-updated', { detail: { frameId } }));
   } catch (e) {
     console.error('Failed to set equipped frame', e);

@@ -62,7 +62,7 @@ export function getChefAchievements(
   });
 
   // Calculate checkin streak
-  const isTodayChecked = checkIsDailyCheckedIn();
+  const isTodayChecked = checkIsDailyCheckedIn(user);
   // Cooking days or checkins combined
   const cookDaysCount = uniqueDates.size;
   const effectiveCheckinStreak = isTodayChecked ? Math.max(1, cookDaysCount) : cookDaysCount;
